@@ -2,7 +2,7 @@ const root = document.querySelector(".app-shell");
 const eventLog = document.querySelector("#eventLog");
 
 const defaults = {
-    configVersion: 19,
+    configVersion: 20,
     backend: "cpu",
     inputBackend: "dd",
     modelPath: "",
@@ -41,12 +41,18 @@ const defaults = {
     predictionOutputSmoothing: 0.20,
     predictionServoGain: 0.65,
     enableDroneTracking: false,
+    droneTrackController: "px4",
     droneTrackGain: 0.72,
     droneTrackVelocityGain: 0.18,
     droneTrackDamping: 0.10,
     droneTrackSmoothing: 0.60,
     droneTrackMaxMove: 90,
     droneTrackDeadzone: 0.6,
+    droneTrackPositionGain: 0.90,
+    droneTrackVelocityDamping: 0.28,
+    droneTrackAccelLimit: 2600,
+    droneTrackVispLambda: 0.85,
+    droneTrackVispDamping: 0.22,
     targetX: 0.5,
     targetY: 0.3,
     enableAutoAimPart: true,
@@ -199,12 +205,18 @@ const controls = {
     predictionServoGain: $("#predictionServoGain"),
     droneTrackingSlot: $("#droneTrackingSlot"),
     droneTrackingLabel: $("#droneTrackingLabel"),
+    droneTrackController: $("#droneTrackController"),
     droneTrackGain: $("#droneTrackGain"),
     droneTrackVelocityGain: $("#droneTrackVelocityGain"),
     droneTrackDamping: $("#droneTrackDamping"),
     droneTrackSmoothing: $("#droneTrackSmoothing"),
     droneTrackMaxMove: $("#droneTrackMaxMove"),
     droneTrackDeadzone: $("#droneTrackDeadzone"),
+    droneTrackPositionGain: $("#droneTrackPositionGain"),
+    droneTrackVelocityDamping: $("#droneTrackVelocityDamping"),
+    droneTrackAccelLimit: $("#droneTrackAccelLimit"),
+    droneTrackVispLambda: $("#droneTrackVispLambda"),
+    droneTrackVispDamping: $("#droneTrackVispDamping"),
     cropSize: $("#cropSize"),
     lockRadius: $("#lockRadius"),
     confidence: $("#confidence"),
@@ -258,6 +270,11 @@ const controls = {
     droneTrackSmoothingValue: $("#droneTrackSmoothingValue"),
     droneTrackMaxMoveValue: $("#droneTrackMaxMoveValue"),
     droneTrackDeadzoneValue: $("#droneTrackDeadzoneValue"),
+    droneTrackPositionGainValue: $("#droneTrackPositionGainValue"),
+    droneTrackVelocityDampingValue: $("#droneTrackVelocityDampingValue"),
+    droneTrackAccelLimitValue: $("#droneTrackAccelLimitValue"),
+    droneTrackVispLambdaValue: $("#droneTrackVispLambdaValue"),
+    droneTrackVispDampingValue: $("#droneTrackVispDampingValue"),
     humanSlideMaxStepValue: $("#humanSlideMaxStepValue"),
     humanSlideJitterValue: $("#humanSlideJitterValue"),
     humanSlideDelayMinValue: $("#humanSlideDelayMinValue"),
@@ -437,6 +454,10 @@ function normalizeAimMode(mode) {
     return ["atan", "linear"].includes(mode) ? mode : defaults.aimMode;
 }
 
+function normalizeDroneTrackController(mode) {
+    return ["classic", "px4", "visp"].includes(mode) ? mode : defaults.droneTrackController;
+}
+
 function sanitizeConfig(config) {
     const incomingVersion = Number(config?.configVersion) || 0;
     const merged = { ...defaults, ...config };
@@ -451,7 +472,16 @@ function sanitizeConfig(config) {
         merged.droneTrackMaxMove = defaults.droneTrackMaxMove;
         merged.droneTrackDeadzone = defaults.droneTrackDeadzone;
     }
+    if (incomingVersion < 20) {
+        merged.droneTrackController = defaults.droneTrackController;
+        merged.droneTrackPositionGain = defaults.droneTrackPositionGain;
+        merged.droneTrackVelocityDamping = defaults.droneTrackVelocityDamping;
+        merged.droneTrackAccelLimit = defaults.droneTrackAccelLimit;
+        merged.droneTrackVispLambda = defaults.droneTrackVispLambda;
+        merged.droneTrackVispDamping = defaults.droneTrackVispDamping;
+    }
     merged.aimMode = normalizeAimMode(merged.aimMode);
+    merged.droneTrackController = normalizeDroneTrackController(merged.droneTrackController);
     merged.autoStopMode = normalizeAutoStopMode(merged.autoStopMode);
     merged.dependencyPaths = {
         ...(defaults.dependencyPaths || {}),
@@ -1221,12 +1251,18 @@ function syncUiFromConfig() {
     controls.predictionNoisePixels.value = state.config.predictionNoisePixels;
     controls.predictionOutputSmoothing.value = state.config.predictionOutputSmoothing;
     controls.predictionServoGain.value = state.config.predictionServoGain;
+    controls.droneTrackController.value = normalizeDroneTrackController(state.config.droneTrackController);
     controls.droneTrackGain.value = state.config.droneTrackGain;
     controls.droneTrackVelocityGain.value = state.config.droneTrackVelocityGain;
     controls.droneTrackDamping.value = state.config.droneTrackDamping;
     controls.droneTrackSmoothing.value = state.config.droneTrackSmoothing;
     controls.droneTrackMaxMove.value = state.config.droneTrackMaxMove;
     controls.droneTrackDeadzone.value = state.config.droneTrackDeadzone;
+    controls.droneTrackPositionGain.value = state.config.droneTrackPositionGain;
+    controls.droneTrackVelocityDamping.value = state.config.droneTrackVelocityDamping;
+    controls.droneTrackAccelLimit.value = state.config.droneTrackAccelLimit;
+    controls.droneTrackVispLambda.value = state.config.droneTrackVispLambda;
+    controls.droneTrackVispDamping.value = state.config.droneTrackVispDamping;
     controls.cropSize.value = state.config.cropSize;
     controls.lockRadius.value = state.config.lockRadius;
     controls.confidence.value = state.config.confidence;
@@ -1333,12 +1369,18 @@ function syncConfigFromUi() {
     state.config.predictionNoisePixels = Number(controls.predictionNoisePixels.value);
     state.config.predictionOutputSmoothing = Number(controls.predictionOutputSmoothing.value);
     state.config.predictionServoGain = Number(controls.predictionServoGain.value);
+    state.config.droneTrackController = normalizeDroneTrackController(controls.droneTrackController.value);
     state.config.droneTrackGain = Number(controls.droneTrackGain.value);
     state.config.droneTrackVelocityGain = Number(controls.droneTrackVelocityGain.value);
     state.config.droneTrackDamping = Number(controls.droneTrackDamping.value);
     state.config.droneTrackSmoothing = Number(controls.droneTrackSmoothing.value);
     state.config.droneTrackMaxMove = Number(controls.droneTrackMaxMove.value);
     state.config.droneTrackDeadzone = Number(controls.droneTrackDeadzone.value);
+    state.config.droneTrackPositionGain = Number(controls.droneTrackPositionGain.value);
+    state.config.droneTrackVelocityDamping = Number(controls.droneTrackVelocityDamping.value);
+    state.config.droneTrackAccelLimit = Number(controls.droneTrackAccelLimit.value);
+    state.config.droneTrackVispLambda = Number(controls.droneTrackVispLambda.value);
+    state.config.droneTrackVispDamping = Number(controls.droneTrackVispDamping.value);
     state.config.cropSize = Number(controls.cropSize.value);
     state.config.lockRadius = Number(controls.lockRadius.value);
     state.config.confidence = Number(controls.confidence.value);
@@ -1405,8 +1447,16 @@ function updateLabels() {
     controls.droneTrackSmoothingValue.textContent = state.config.droneTrackSmoothing.toFixed(2);
     controls.droneTrackMaxMoveValue.textContent = state.config.droneTrackMaxMove.toFixed(0);
     controls.droneTrackDeadzoneValue.textContent = state.config.droneTrackDeadzone.toFixed(1);
+    controls.droneTrackPositionGainValue.textContent = state.config.droneTrackPositionGain.toFixed(2);
+    controls.droneTrackVelocityDampingValue.textContent = state.config.droneTrackVelocityDamping.toFixed(2);
+    controls.droneTrackAccelLimitValue.textContent = state.config.droneTrackAccelLimit.toFixed(0);
+    controls.droneTrackVispLambdaValue.textContent = state.config.droneTrackVispLambda.toFixed(2);
+    controls.droneTrackVispDampingValue.textContent = state.config.droneTrackVispDamping.toFixed(2);
+    const droneControllerText = state.config.droneTrackController === "visp"
+        ? "ViSP"
+        : state.config.droneTrackController === "classic" ? "CLASSIC" : "PX4";
     controls.droneTrackingLabel.textContent = state.config.enableDroneTracking
-        ? `${state.config.droneTrackGain.toFixed(2)} / ${state.config.droneTrackMaxMove.toFixed(0)}px`
+        ? `${droneControllerText} ${state.config.droneTrackGain.toFixed(2)} / ${state.config.droneTrackMaxMove.toFixed(0)}px`
         : "OFF";
     controls.droneTrackingSwitchLabel.textContent = controls.droneTrackingLabel.textContent;
     const predictionModeText = predictionModeLabel(state.config.predictionMode);
@@ -1694,12 +1744,18 @@ function bindEvents() {
         controls.predictionNoisePixels,
         controls.predictionOutputSmoothing,
         controls.predictionServoGain,
+        controls.droneTrackController,
         controls.droneTrackGain,
         controls.droneTrackVelocityGain,
         controls.droneTrackDamping,
         controls.droneTrackSmoothing,
         controls.droneTrackMaxMove,
         controls.droneTrackDeadzone,
+        controls.droneTrackPositionGain,
+        controls.droneTrackVelocityDamping,
+        controls.droneTrackAccelLimit,
+        controls.droneTrackVispLambda,
+        controls.droneTrackVispDamping,
         controls.cropSize,
         controls.lockRadius,
         controls.confidence,

@@ -145,12 +145,18 @@ public:
     double prediction_output_smoothing = 0.20;
     double prediction_servo_gain = 0.65;
     bool enable_drone_tracking = false;
+    std::string drone_track_controller = "px4";
     double drone_track_gain = 0.72;
     double drone_track_velocity_gain = 0.18;
     double drone_track_damping = 0.10;
     double drone_track_smoothing = 0.60;
     int drone_track_max_move_pixels = 90;
     double drone_track_deadzone_pixels = 0.6;
+    double drone_track_position_gain = 0.90;
+    double drone_track_velocity_damping = 0.28;
+    double drone_track_accel_limit = 2600.0;
+    double drone_track_visp_lambda = 0.85;
+    double drone_track_visp_damping = 0.22;
     double target_x_ratio = 0.5;
     double target_y_ratio = 0.3;
     bool auto_target_part = true;
@@ -446,6 +452,18 @@ static bool IsValidPredictionMode(const std::string& mode) {
     return mode == "off" || mode == "linear" || mode == "arc" || mode == "hybrid" || mode == "adaptive" || mode == "alphabeta" || mode == "kalman" || mode == "servo";
 }
 
+static std::string NormalizeDroneTrackController(std::string value) {
+    value = LowerAscii(TrimAscii(value));
+    if (value == "classic" || value == "px4" || value == "visp") {
+        return value;
+    }
+    return "px4";
+}
+
+static bool IsValidDroneTrackController(const std::string& mode) {
+    return mode == "classic" || mode == "px4" || mode == "visp";
+}
+
 static std::unordered_map<std::string, std::string> ReadKeyValueFile(const std::wstring& path) {
     std::unordered_map<std::string, std::string> values;
     std::ifstream file{ std::filesystem::path(path) };
@@ -570,12 +588,18 @@ static Config ConfigFromArgs(int argc, wchar_t* argv[]) {
         else if (ReadArgValue(arg, L"prediction-output-smoothing", value)) cfg.prediction_output_smoothing = std::clamp(ReadDouble(NarrowAscii(value), cfg.prediction_output_smoothing), 0.0, 1.0);
         else if (ReadArgValue(arg, L"prediction-servo-gain", value)) cfg.prediction_servo_gain = std::clamp(ReadDouble(NarrowAscii(value), cfg.prediction_servo_gain), 0.0, 2.0);
         else if (ReadArgValue(arg, L"drone-tracking", value)) cfg.enable_drone_tracking = ReadBoolText(NarrowAscii(value), cfg.enable_drone_tracking);
+        else if (ReadArgValue(arg, L"drone-track-controller", value)) cfg.drone_track_controller = NormalizeDroneTrackController(NarrowAscii(value));
         else if (ReadArgValue(arg, L"drone-track-gain", value)) cfg.drone_track_gain = std::clamp(ReadDouble(NarrowAscii(value), cfg.drone_track_gain), 0.01, 5.0);
         else if (ReadArgValue(arg, L"drone-track-velocity-gain", value)) cfg.drone_track_velocity_gain = std::clamp(ReadDouble(NarrowAscii(value), cfg.drone_track_velocity_gain), 0.0, 3.0);
         else if (ReadArgValue(arg, L"drone-track-damping", value)) cfg.drone_track_damping = std::clamp(ReadDouble(NarrowAscii(value), cfg.drone_track_damping), 0.0, 3.0);
         else if (ReadArgValue(arg, L"drone-track-smoothing", value)) cfg.drone_track_smoothing = std::clamp(ReadDouble(NarrowAscii(value), cfg.drone_track_smoothing), 0.02, 1.0);
         else if (ReadArgValue(arg, L"drone-track-max-move", value)) cfg.drone_track_max_move_pixels = std::clamp(ReadInt(NarrowAscii(value), cfg.drone_track_max_move_pixels), 1, 800);
         else if (ReadArgValue(arg, L"drone-track-deadzone", value)) cfg.drone_track_deadzone_pixels = std::clamp(ReadDouble(NarrowAscii(value), cfg.drone_track_deadzone_pixels), 0.0, 30.0);
+        else if (ReadArgValue(arg, L"drone-track-position-gain", value)) cfg.drone_track_position_gain = std::clamp(ReadDouble(NarrowAscii(value), cfg.drone_track_position_gain), 0.0, 5.0);
+        else if (ReadArgValue(arg, L"drone-track-velocity-damping", value)) cfg.drone_track_velocity_damping = std::clamp(ReadDouble(NarrowAscii(value), cfg.drone_track_velocity_damping), 0.0, 5.0);
+        else if (ReadArgValue(arg, L"drone-track-accel-limit", value)) cfg.drone_track_accel_limit = std::clamp(ReadDouble(NarrowAscii(value), cfg.drone_track_accel_limit), 100.0, 20000.0);
+        else if (ReadArgValue(arg, L"drone-track-visp-lambda", value)) cfg.drone_track_visp_lambda = std::clamp(ReadDouble(NarrowAscii(value), cfg.drone_track_visp_lambda), 0.01, 5.0);
+        else if (ReadArgValue(arg, L"drone-track-visp-damping", value)) cfg.drone_track_visp_damping = std::clamp(ReadDouble(NarrowAscii(value), cfg.drone_track_visp_damping), 0.0, 5.0);
         else if (ReadArgValue(arg, L"target-x", value)) cfg.target_x_ratio = std::clamp(ReadDouble(NarrowAscii(value), cfg.target_x_ratio), 0.0, 1.0);
         else if (ReadArgValue(arg, L"target-y", value)) cfg.target_y_ratio = std::clamp(ReadDouble(NarrowAscii(value), cfg.target_y_ratio), 0.0, 1.0);
         else if (ReadArgValue(arg, L"enemy-camp", value)) cfg.enemy_camp = NormalizeEnemyCamp(NarrowAscii(value));
@@ -2295,12 +2319,18 @@ public:
             << ", output_smoothing=" << cfg.prediction_output_smoothing
             << ", servo_gain=" << cfg.prediction_servo_gain << " ---" << std::endl;
         std::cout << "--- Drone tracking: " << (cfg.enable_drone_tracking ? "on" : "off")
+            << ", controller=" << cfg.drone_track_controller
             << ", gain=" << cfg.drone_track_gain
             << ", velocity=" << cfg.drone_track_velocity_gain
             << ", damping=" << cfg.drone_track_damping
             << ", smoothing=" << cfg.drone_track_smoothing
             << ", max_move=" << cfg.drone_track_max_move_pixels
-            << ", deadzone=" << cfg.drone_track_deadzone_pixels << " ---" << std::endl;
+            << ", deadzone=" << cfg.drone_track_deadzone_pixels
+            << ", pos_gain=" << cfg.drone_track_position_gain
+            << ", vel_damping=" << cfg.drone_track_velocity_damping
+            << ", accel_limit=" << cfg.drone_track_accel_limit
+            << ", visp_lambda=" << cfg.drone_track_visp_lambda
+            << ", visp_damping=" << cfg.drone_track_visp_damping << " ---" << std::endl;
         std::cout << "--- Aim hotkeys: primary=" << KeyNameFromVk(cfg.smooth_aim_key)
             << ", secondary=" << KeyNameFromVk(cfg.smooth_aim_secondary_key) << " ---" << std::endl;
         std::cout << "--- Mouse slide: humanized=" << (cfg.enable_humanized_movement ? "on" : "off")
@@ -2648,12 +2678,18 @@ private:
         next.prediction_output_smoothing = std::clamp(ReadLiveDouble(values, "prediction_output_smoothing", next.prediction_output_smoothing), 0.0, 1.0);
         next.prediction_servo_gain = std::clamp(ReadLiveDouble(values, "prediction_servo_gain", next.prediction_servo_gain), 0.0, 2.0);
         next.enable_drone_tracking = ReadLiveBool(values, "drone_tracking_enabled", next.enable_drone_tracking);
+        next.drone_track_controller = NormalizeDroneTrackController(ReadLiveString(values, "drone_track_controller", next.drone_track_controller));
         next.drone_track_gain = std::clamp(ReadLiveDouble(values, "drone_track_gain", next.drone_track_gain), 0.01, 5.0);
         next.drone_track_velocity_gain = std::clamp(ReadLiveDouble(values, "drone_track_velocity_gain", next.drone_track_velocity_gain), 0.0, 3.0);
         next.drone_track_damping = std::clamp(ReadLiveDouble(values, "drone_track_damping", next.drone_track_damping), 0.0, 3.0);
         next.drone_track_smoothing = std::clamp(ReadLiveDouble(values, "drone_track_smoothing", next.drone_track_smoothing), 0.02, 1.0);
         next.drone_track_max_move_pixels = std::clamp(ReadLiveInt(values, "drone_track_max_move", next.drone_track_max_move_pixels), 1, 800);
         next.drone_track_deadzone_pixels = std::clamp(ReadLiveDouble(values, "drone_track_deadzone", next.drone_track_deadzone_pixels), 0.0, 30.0);
+        next.drone_track_position_gain = std::clamp(ReadLiveDouble(values, "drone_track_position_gain", next.drone_track_position_gain), 0.0, 5.0);
+        next.drone_track_velocity_damping = std::clamp(ReadLiveDouble(values, "drone_track_velocity_damping", next.drone_track_velocity_damping), 0.0, 5.0);
+        next.drone_track_accel_limit = std::clamp(ReadLiveDouble(values, "drone_track_accel_limit", next.drone_track_accel_limit), 100.0, 20000.0);
+        next.drone_track_visp_lambda = std::clamp(ReadLiveDouble(values, "drone_track_visp_lambda", next.drone_track_visp_lambda), 0.01, 5.0);
+        next.drone_track_visp_damping = std::clamp(ReadLiveDouble(values, "drone_track_visp_damping", next.drone_track_visp_damping), 0.0, 5.0);
         next.enable_visualization = ReadLiveBool(values, "enable_visualization", next.enable_visualization);
 
         const bool detector_changed =
@@ -2722,12 +2758,18 @@ private:
             old_cfg.prediction_output_smoothing != next.prediction_output_smoothing ||
             old_cfg.prediction_servo_gain != next.prediction_servo_gain ||
             old_cfg.enable_drone_tracking != next.enable_drone_tracking ||
+            old_cfg.drone_track_controller != next.drone_track_controller ||
             old_cfg.drone_track_gain != next.drone_track_gain ||
             old_cfg.drone_track_velocity_gain != next.drone_track_velocity_gain ||
             old_cfg.drone_track_damping != next.drone_track_damping ||
             old_cfg.drone_track_smoothing != next.drone_track_smoothing ||
             old_cfg.drone_track_max_move_pixels != next.drone_track_max_move_pixels ||
             old_cfg.drone_track_deadzone_pixels != next.drone_track_deadzone_pixels ||
+            old_cfg.drone_track_position_gain != next.drone_track_position_gain ||
+            old_cfg.drone_track_velocity_damping != next.drone_track_velocity_damping ||
+            old_cfg.drone_track_accel_limit != next.drone_track_accel_limit ||
+            old_cfg.drone_track_visp_lambda != next.drone_track_visp_lambda ||
+            old_cfg.drone_track_visp_damping != next.drone_track_visp_damping ||
             old_cfg.enable_humanized_movement != next.enable_humanized_movement ||
             old_cfg.human_move_max_step != next.human_move_max_step ||
             old_cfg.human_move_jitter != next.human_move_jitter ||
@@ -2774,12 +2816,18 @@ private:
             << ",Q=" << cfg.prediction_kalman_process_noise
             << ",servo=" << cfg.prediction_servo_gain << ")"
             << ", drone_tracking=" << (cfg.enable_drone_tracking ? "on" : "off")
-            << "(gain=" << cfg.drone_track_gain
+            << "(controller=" << cfg.drone_track_controller
+            << ",gain=" << cfg.drone_track_gain
             << ",vel=" << cfg.drone_track_velocity_gain
             << ",damping=" << cfg.drone_track_damping
             << ",smooth=" << cfg.drone_track_smoothing
             << ",max=" << cfg.drone_track_max_move_pixels
-            << ",deadzone=" << cfg.drone_track_deadzone_pixels << ")"
+            << ",deadzone=" << cfg.drone_track_deadzone_pixels
+            << ",pos=" << cfg.drone_track_position_gain
+            << ",vel_damp=" << cfg.drone_track_velocity_damping
+            << ",accel=" << cfg.drone_track_accel_limit
+            << ",visp_lambda=" << cfg.drone_track_visp_lambda
+            << ",visp_damp=" << cfg.drone_track_visp_damping << ")"
             << ", human_slide=" << (cfg.enable_humanized_movement ? "on" : "off")
             << "(" << cfg.human_move_max_step << "," << cfg.human_move_jitter
             << "," << cfg.human_move_delay_min_ms << "-" << cfg.human_move_delay_max_ms << "ms)"
@@ -3534,6 +3582,7 @@ private:
             cfg.drone_track_damping * derivative.x * response_horizon,
             cfg.drone_track_damping * derivative.y * response_horizon);
 
+        const std::string controller = NormalizeDroneTrackController(cfg.drone_track_controller);
         cv::Point2d lead(
             control_velocity.x + control_damping.x,
             control_velocity.y + control_damping.y);
@@ -3545,9 +3594,58 @@ private:
             lead.y *= scale;
         }
 
-        cv::Point2d desired(
-            (error.x + lead.x) * cfg.drone_track_gain,
-            (error.y + lead.y) * cfg.drone_track_gain);
+        cv::Point2d desired;
+        if (controller == "px4") {
+            const double pos_gain = std::clamp(cfg.drone_track_position_gain, 0.0, 5.0);
+            const double vel_damping = std::clamp(cfg.drone_track_velocity_damping, 0.0, 5.0);
+            cv::Point2d desired_velocity(
+                pos_gain * (error.x + lead.x) / std::max(response_horizon, 0.001),
+                pos_gain * (error.y + lead.y) / std::max(response_horizon, 0.001));
+            const double velocity_limit = std::max(1.0, static_cast<double>(cfg.drone_track_max_move_pixels) / std::max(response_horizon, 0.001));
+            const double desired_velocity_len = std::hypot(desired_velocity.x, desired_velocity.y);
+            if (desired_velocity_len > velocity_limit && desired_velocity_len > 0.001) {
+                const double scale = velocity_limit / desired_velocity_len;
+                desired_velocity.x *= scale;
+                desired_velocity.y *= scale;
+            }
+
+            cv::Point2d control_velocity_px(
+                desired_velocity.x - vel_damping * drone_tracking.velocity.x,
+                desired_velocity.y - vel_damping * drone_tracking.velocity.y);
+            const double accel_limit = std::max(100.0, cfg.drone_track_accel_limit) * response_horizon * response_horizon;
+            const double current_command_len = std::hypot(drone_tracking.command.x, drone_tracking.command.y);
+            const cv::Point2d target_command(
+                control_velocity_px.x * response_horizon * cfg.drone_track_gain,
+                control_velocity_px.y * response_horizon * cfg.drone_track_gain);
+            cv::Point2d delta_command(
+                target_command.x - drone_tracking.command.x,
+                target_command.y - drone_tracking.command.y);
+            const double delta_len = std::hypot(delta_command.x, delta_command.y);
+            const double max_delta = std::max(1.0, accel_limit + current_command_len * 0.35);
+            if (delta_len > max_delta && delta_len > 0.001) {
+                const double scale = max_delta / delta_len;
+                delta_command.x *= scale;
+                delta_command.y *= scale;
+            }
+
+            desired = cv::Point2d(
+                drone_tracking.command.x + delta_command.x,
+                drone_tracking.command.y + delta_command.y);
+        }
+        else if (controller == "visp") {
+            const double lambda = std::clamp(cfg.drone_track_visp_lambda, 0.01, 5.0);
+            const double damping = std::clamp(cfg.drone_track_visp_damping, 0.0, 5.0);
+            const double normalized_radius = std::max(1.0, static_cast<double>(cfg.crop_size) * 0.5);
+            const double interaction_scale = 1.0 + std::min(1.0, error_len / normalized_radius) * damping;
+            desired = cv::Point2d(
+                ((error.x + lead.x) * lambda - damping * drone_tracking.velocity.x * response_horizon) * cfg.drone_track_gain / interaction_scale,
+                ((error.y + lead.y) * lambda - damping * drone_tracking.velocity.y * response_horizon) * cfg.drone_track_gain / interaction_scale);
+        }
+        else {
+            desired = cv::Point2d(
+                (error.x + lead.x) * cfg.drone_track_gain,
+                (error.y + lead.y) * cfg.drone_track_gain);
+        }
 
         const double desired_len = std::hypot(desired.x, desired.y);
         const double max_error_offset = std::max(1.0, error_len + max_lead);

@@ -429,6 +429,14 @@
                         <h2>仿无人机追踪</h2>
                         <small id="droneTrackingLabel">OFF</small>
                     </div>
+                    <label class="field">
+                        <span>控制器</span>
+                        <select id="droneTrackController">
+                            <option value="px4" selected>PX4 级联控制</option>
+                            <option value="visp">ViSP 视觉伺服参考</option>
+                            <option value="classic">经典速度前馈</option>
+                        </select>
+                    </label>
                     <div class="hotkey-grid">
                         <label class="field range-field">
                             <span>主增益 <b id="droneTrackGainValue">0.72</b></span>
@@ -457,6 +465,32 @@
                         <label class="field range-field">
                             <span>追踪死区 <b id="droneTrackDeadzoneValue">0.6</b> px</span>
                             <input id="droneTrackDeadzone" type="range" min="0.0" max="10.0" step="0.1" value="0.6">
+                        </label>
+                    </div>
+                    <div class="hotkey-grid">
+                        <label class="field range-field">
+                            <span>PX4位置增益 <b id="droneTrackPositionGainValue">0.90</b></span>
+                            <input id="droneTrackPositionGain" type="range" min="0.00" max="3.00" step="0.01" value="0.90">
+                        </label>
+                        <label class="field range-field">
+                            <span>PX4速度阻尼 <b id="droneTrackVelocityDampingValue">0.28</b></span>
+                            <input id="droneTrackVelocityDamping" type="range" min="0.00" max="3.00" step="0.01" value="0.28">
+                        </label>
+                    </div>
+                    <div class="hotkey-grid">
+                        <label class="field range-field">
+                            <span>PX4加速度限制 <b id="droneTrackAccelLimitValue">2600</b></span>
+                            <input id="droneTrackAccelLimit" type="range" min="100" max="12000" step="50" value="2600">
+                        </label>
+                        <label class="field range-field">
+                            <span>ViSP Lambda <b id="droneTrackVispLambdaValue">0.85</b></span>
+                            <input id="droneTrackVispLambda" type="range" min="0.05" max="3.00" step="0.01" value="0.85">
+                        </label>
+                    </div>
+                    <div class="hotkey-grid">
+                        <label class="field range-field">
+                            <span>ViSP阻尼 <b id="droneTrackVispDampingValue">0.22</b></span>
+                            <input id="droneTrackVispDamping" type="range" min="0.00" max="3.00" step="0.01" value="0.22">
                         </label>
                     </div>
                 </section>

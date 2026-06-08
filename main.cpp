@@ -3328,12 +3328,11 @@ private:
         }
 
         target.measured_point = target.point;
-        if (cfg.enable_drone_tracking) {
-            prediction_tracker.Reset();
-            last_aim_point_source = "drone";
-            return target;
-        }
-        if (cfg.prediction_mode == "off" || cfg.prediction_lead_ms <= 0.0 || cfg.prediction_max_pixels <= 0) {
+        const bool explicit_prediction = cfg.prediction_mode != "off"
+            && cfg.prediction_lead_ms > 0.0
+            && cfg.prediction_max_pixels > 0;
+        const bool realtime_compensation = !explicit_prediction && isAimAllowedThisFrame();
+        if (!explicit_prediction && !realtime_compensation) {
             if (cfg.prediction_mode == "off") {
                 prediction_tracker.Reset();
             }
@@ -3352,13 +3351,14 @@ private:
         const double jump = std::hypot(
             measurement.x - prediction_tracker.last_measurement.x,
             measurement.y - prediction_tracker.last_measurement.y);
-        if (jump > static_cast<double>(cfg.prediction_reset_pixels)) {
+        const int reset_pixels = explicit_prediction ? cfg.prediction_reset_pixels : std::max(80, cfg.prediction_reset_pixels);
+        if (jump > static_cast<double>(reset_pixels)) {
             prediction_tracker.Initialize(measurement, now);
             return target;
         }
         prediction_tracker.AddSample(measurement, now);
 
-        const bool noise_only = jump <= cfg.prediction_noise_pixels;
+        const bool noise_only = explicit_prediction && jump <= cfg.prediction_noise_pixels;
         if (noise_only && cfg.prediction_mode != "kalman" && cfg.prediction_mode != "adaptive") {
             prediction_tracker.velocity = cv::Point2d(
                 prediction_tracker.velocity.x * 0.85,
@@ -3369,11 +3369,13 @@ private:
             prediction_tracker.position = measurement;
         }
         else {
-            if (cfg.prediction_mode == "linear") {
+            if (realtime_compensation || cfg.prediction_mode == "linear") {
                 const cv::Point2d raw_velocity(
                     (measurement.x - prediction_tracker.last_measurement.x) / dt,
                     (measurement.y - prediction_tracker.last_measurement.y) / dt);
-                const double alpha = std::clamp(cfg.prediction_smoothing, 0.0, 1.0);
+                const double alpha = realtime_compensation
+                    ? 0.70
+                    : std::clamp(cfg.prediction_smoothing, 0.0, 1.0);
                 prediction_tracker.velocity = cv::Point2d(
                     alpha * raw_velocity.x + (1.0 - alpha) * prediction_tracker.velocity.x,
                     alpha * raw_velocity.y + (1.0 - alpha) * prediction_tracker.velocity.y);
@@ -3448,7 +3450,9 @@ private:
             prediction_tracker.last_time = now;
         }
 
-        double effective_lead_ms = cfg.prediction_lead_ms;
+        double effective_lead_ms = explicit_prediction
+            ? cfg.prediction_lead_ms
+            : std::clamp((smoothed_total > 0.0 ? smoothed_total : timings.total_loop_ms) + 10.0, 12.0, 35.0);
         if (cfg.prediction_mode == "servo") {
             const double observed_loop_ms = smoothed_total > 0.0 ? smoothed_total : timings.total_loop_ms;
             if (std::isfinite(observed_loop_ms) && observed_loop_ms > 0.0) {
@@ -3459,17 +3463,17 @@ private:
         cv::Point2d future_position(
             prediction_tracker.position.x + prediction_tracker.velocity.x * lead_seconds,
             prediction_tracker.position.y + prediction_tracker.velocity.y * lead_seconds);
-        if (cfg.prediction_mode == "arc") {
+        if (explicit_prediction && cfg.prediction_mode == "arc") {
             const double accel_scale = 0.5 * lead_seconds * lead_seconds;
             future_position.x += prediction_tracker.acceleration.x * accel_scale;
             future_position.y += prediction_tracker.acceleration.y * accel_scale;
         }
-        else if (cfg.prediction_mode == "adaptive" || cfg.prediction_mode == "servo") {
+        else if (explicit_prediction && (cfg.prediction_mode == "adaptive" || cfg.prediction_mode == "servo")) {
             const double accel_scale = 0.5 * lead_seconds * lead_seconds;
             future_position.x += prediction_tracker.acceleration.x * accel_scale;
             future_position.y += prediction_tracker.acceleration.y * accel_scale;
         }
-        else if (cfg.prediction_mode == "hybrid") {
+        else if (explicit_prediction && cfg.prediction_mode == "hybrid") {
             const double accel_scale = 0.5 * lead_seconds * lead_seconds;
             future_position.x += prediction_tracker.acceleration.x * accel_scale * 0.35;
             future_position.y += prediction_tracker.acceleration.y * accel_scale;
@@ -3478,7 +3482,9 @@ private:
             future_position.x - measurement.x,
             future_position.y - measurement.y);
         const double lead_length = std::hypot(lead.x, lead.y);
-        int max_prediction_pixels = cfg.prediction_max_pixels;
+        int max_prediction_pixels = explicit_prediction
+            ? cfg.prediction_max_pixels
+            : std::clamp(cfg.max_move_pixels / 2, 18, 45);
         if (cfg.prediction_mode == "servo") {
             max_prediction_pixels = std::max(max_prediction_pixels, std::clamp(cfg.max_move_pixels, 30, 120));
         }
@@ -3488,7 +3494,9 @@ private:
             lead.y *= scale;
         }
 
-        double output_alpha = std::clamp(cfg.prediction_output_smoothing, 0.0, 1.0);
+        double output_alpha = explicit_prediction
+            ? std::clamp(cfg.prediction_output_smoothing, 0.0, 1.0)
+            : 0.80;
         if (cfg.prediction_mode == "servo") {
             output_alpha = std::max(output_alpha, 0.65);
         }
@@ -3505,7 +3513,9 @@ private:
 
         target.point = clampPointToCrop(cv::Point2d(measurement.x + lead.x, measurement.y + lead.y));
         target.prediction_applied = true;
-        last_aim_point_source = cfg.prediction_mode == "servo" ? "servo" : "predicted";
+        last_aim_point_source = explicit_prediction
+            ? (cfg.prediction_mode == "servo" ? "servo" : "predicted")
+            : "realtime";
         last_prediction_dx = target.point.x - target.measured_point.x;
         last_prediction_dy = target.point.y - target.measured_point.y;
         return target;
@@ -3784,6 +3794,34 @@ private:
         const bool was_initialized = drone_tracking.initialized;
         if (!was_initialized) {
             drone_tracking.Initialize(measurement, error, now);
+        }
+
+        if (cfg.drone_track_controller == "px4" && error_len > 28.0) {
+            auto raw = mapAimOffsetToMouse(error.x, error.y);
+            raw = applyAimFilter(raw);
+            last_raw_move_x = raw.first;
+            last_raw_move_y = raw.second;
+            last_aim_point_source = "drone_chase";
+            last_prediction_dx = target.point.x - target.measured_point.x;
+            last_prediction_dy = target.point.y - target.measured_point.y;
+            if (use_carry) {
+                move_x = takeMouseDelta(raw.first, aim_carry_x, cfg.drone_track_max_move_pixels);
+                move_y = takeMouseDelta(raw.second, aim_carry_y, cfg.drone_track_max_move_pixels);
+            }
+            else {
+                move_x = toMouseDelta(raw.first, cfg.drone_track_max_move_pixels);
+                move_y = toMouseDelta(raw.second, cfg.drone_track_max_move_pixels);
+            }
+            drone_tracking.command = cv::Point2d(error.x, error.y);
+            drone_tracking.last_measurement = measurement;
+            drone_tracking.last_error = error;
+            drone_tracking.last_time = now;
+            last_servo_direct_move = true;
+            if (move_x == 0 && move_y == 0) {
+                last_gate_state = use_carry ? "drone_chase_accum" : "drone_chase_subpixel";
+                return false;
+            }
+            return true;
         }
 
         double dt = was_initialized

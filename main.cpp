@@ -3692,6 +3692,7 @@ private:
             << "\",\"frame\":" << aim_sample_frame_index
             << ",\"settings\":{" << settings << "}}\n";
         ++aim_sample_lines_since_flush;
+        flushAimSampleLogIfNeeded(true);
     }
 
     void flushAimSampleLogIfNeeded(bool force = false) {
@@ -3759,7 +3760,7 @@ private:
             << ",\"targeting\":" << timings.targeting_ms
             << ",\"input\":" << timings.input_ms << "}}\n";
         ++aim_sample_lines_since_flush;
-        flushAimSampleLogIfNeeded(false);
+        flushAimSampleLogIfNeeded(true);
     }
 
     bool computeDroneTrackingMove(const TargetLock& target, bool use_carry, int& move_x, int& move_y) {

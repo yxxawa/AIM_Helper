@@ -145,12 +145,12 @@ public:
     double prediction_output_smoothing = 0.20;
     double prediction_servo_gain = 0.65;
     bool enable_drone_tracking = false;
-    double drone_track_gain = 1.35;
-    double drone_track_velocity_gain = 0.55;
-    double drone_track_damping = 0.18;
-    double drone_track_smoothing = 0.78;
-    int drone_track_max_move_pixels = 220;
-    double drone_track_deadzone_pixels = 0.3;
+    double drone_track_gain = 0.72;
+    double drone_track_velocity_gain = 0.18;
+    double drone_track_damping = 0.10;
+    double drone_track_smoothing = 0.60;
+    int drone_track_max_move_pixels = 90;
+    double drone_track_deadzone_pixels = 0.6;
     double target_x_ratio = 0.5;
     double target_y_ratio = 0.3;
     bool auto_target_part = true;
@@ -3526,10 +3526,7 @@ private:
             : cv::Point2d(0.0, 0.0);
 
         const double observed_dt = std::clamp(smoothed_total > 0.0 ? smoothed_total / 1000.0 : dt, 0.001, 0.05);
-        const double response_horizon = std::clamp(observed_dt + (1.0 / 120.0), 0.012, 0.08);
-        cv::Point2d control_error(
-            cfg.drone_track_gain * error.x,
-            cfg.drone_track_gain * error.y);
+        const double response_horizon = std::clamp(observed_dt + (1.0 / 180.0), 0.008, 0.035);
         cv::Point2d control_velocity(
             cfg.drone_track_velocity_gain * drone_tracking.velocity.x * response_horizon,
             cfg.drone_track_velocity_gain * drone_tracking.velocity.y * response_horizon);
@@ -3537,21 +3534,48 @@ private:
             cfg.drone_track_damping * derivative.x * response_horizon,
             cfg.drone_track_damping * derivative.y * response_horizon);
 
+        cv::Point2d lead(
+            control_velocity.x + control_damping.x,
+            control_velocity.y + control_damping.y);
+        const double lead_len = std::hypot(lead.x, lead.y);
+        const double max_lead = static_cast<double>(std::max(1, cfg.prediction_max_pixels));
+        if (lead_len > max_lead && lead_len > 0.001) {
+            const double scale = max_lead / lead_len;
+            lead.x *= scale;
+            lead.y *= scale;
+        }
+
         cv::Point2d desired(
-            control_error.x + control_velocity.x + control_damping.x,
-            control_error.y + control_velocity.y + control_damping.y);
+            (error.x + lead.x) * cfg.drone_track_gain,
+            (error.y + lead.y) * cfg.drone_track_gain);
+
+        const double desired_len = std::hypot(desired.x, desired.y);
+        const double max_error_offset = std::max(1.0, error_len + max_lead);
+        if (desired_len > max_error_offset && desired_len > 0.001) {
+            const double scale = max_error_offset / desired_len;
+            desired.x *= scale;
+            desired.y *= scale;
+        }
 
         const double target_speed = std::hypot(drone_tracking.velocity.x, drone_tracking.velocity.y);
-        const double speed_ramp = std::clamp(target_speed / 900.0, 0.0, 1.0);
+        const double speed_ramp = std::clamp(target_speed / 1200.0, 0.0, 1.0);
         const double command_alpha = std::clamp(
             cfg.drone_track_smoothing + (1.0 - cfg.drone_track_smoothing) * speed_ramp,
             0.08,
             1.0);
-        drone_tracking.command = cv::Point2d(
-            command_alpha * desired.x + (1.0 - command_alpha) * drone_tracking.command.x,
-            command_alpha * desired.y + (1.0 - command_alpha) * drone_tracking.command.y);
+        const double command_dot = drone_tracking.command.x * desired.x + drone_tracking.command.y * desired.y;
+        if (command_dot < 0.0) {
+            drone_tracking.command = desired;
+            resetAimCarry();
+            resetAimFilters();
+        }
+        else {
+            drone_tracking.command = cv::Point2d(
+                command_alpha * desired.x + (1.0 - command_alpha) * drone_tracking.command.x,
+                command_alpha * desired.y + (1.0 - command_alpha) * drone_tracking.command.y);
+        }
 
-        const double limit = static_cast<double>(std::max(1, cfg.drone_track_max_move_pixels));
+        const double limit = static_cast<double>(std::max(1, cfg.crop_size));
         const double command_len = std::hypot(drone_tracking.command.x, drone_tracking.command.y);
         if (command_len > limit && command_len > 0.001) {
             const double scale = limit / command_len;
@@ -3559,19 +3583,13 @@ private:
             drone_tracking.command.y *= scale;
         }
 
-        const double mode_scale = cfg.aim_mode == "atan"
-            ? (static_cast<double>(std::max(1, cfg.crop_size)) /
-                (static_cast<double>(std::max(1, cfg.crop_size)) + std::hypot(drone_tracking.command.x, drone_tracking.command.y) * 0.15))
-            : 1.0;
-        std::pair<double, double> raw{
-            drone_tracking.command.x * mode_scale,
-            drone_tracking.command.y * mode_scale
-        };
+        std::pair<double, double> raw = mapAimOffsetToMouse(drone_tracking.command.x, drone_tracking.command.y);
+        raw = applyAimFilter(raw);
         last_raw_move_x = raw.first;
         last_raw_move_y = raw.second;
         last_aim_point_source = "drone";
-        last_prediction_dx = static_cast<int>(std::lround(drone_tracking.command.x));
-        last_prediction_dy = static_cast<int>(std::lround(drone_tracking.command.y));
+        last_prediction_dx = static_cast<int>(std::lround(lead.x));
+        last_prediction_dy = static_cast<int>(std::lround(lead.y));
 
         if (error_len <= std::max(0.0, cfg.drone_track_deadzone_pixels) && std::hypot(raw.first, raw.second) < 0.5) {
             drone_tracking.last_measurement = measurement;

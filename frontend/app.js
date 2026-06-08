@@ -2,7 +2,7 @@ const root = document.querySelector(".app-shell");
 const eventLog = document.querySelector("#eventLog");
 
 const defaults = {
-    configVersion: 18,
+    configVersion: 19,
     backend: "cpu",
     inputBackend: "dd",
     modelPath: "",
@@ -41,12 +41,12 @@ const defaults = {
     predictionOutputSmoothing: 0.20,
     predictionServoGain: 0.65,
     enableDroneTracking: false,
-    droneTrackGain: 1.35,
-    droneTrackVelocityGain: 0.55,
-    droneTrackDamping: 0.18,
-    droneTrackSmoothing: 0.78,
-    droneTrackMaxMove: 220,
-    droneTrackDeadzone: 0.3,
+    droneTrackGain: 0.72,
+    droneTrackVelocityGain: 0.18,
+    droneTrackDamping: 0.10,
+    droneTrackSmoothing: 0.60,
+    droneTrackMaxMove: 90,
+    droneTrackDeadzone: 0.6,
     targetX: 0.5,
     targetY: 0.3,
     enableAutoAimPart: true,
@@ -440,9 +440,16 @@ function normalizeAimMode(mode) {
 function sanitizeConfig(config) {
     const incomingVersion = Number(config?.configVersion) || 0;
     const merged = { ...defaults, ...config };
-    merged.configVersion = defaults.configVersion;
     if (incomingVersion < defaults.configVersion && merged.modelPath === "cs2yolomaax.onnx") {
         merged.modelPath = "";
+    }
+    if (incomingVersion < 19) {
+        merged.droneTrackGain = defaults.droneTrackGain;
+        merged.droneTrackVelocityGain = defaults.droneTrackVelocityGain;
+        merged.droneTrackDamping = defaults.droneTrackDamping;
+        merged.droneTrackSmoothing = defaults.droneTrackSmoothing;
+        merged.droneTrackMaxMove = defaults.droneTrackMaxMove;
+        merged.droneTrackDeadzone = defaults.droneTrackDeadzone;
     }
     merged.aimMode = normalizeAimMode(merged.aimMode);
     merged.autoStopMode = normalizeAutoStopMode(merged.autoStopMode);
@@ -452,6 +459,7 @@ function sanitizeConfig(config) {
             ? config.dependencyPaths
             : {})
     };
+    merged.configVersion = defaults.configVersion;
     return Object.fromEntries(
         Object.entries(merged).filter(([key]) => Object.prototype.hasOwnProperty.call(defaults, key))
     );
@@ -626,12 +634,10 @@ function loadConfig() {
     }
     try {
         const parsed = JSON.parse(saved);
-        state.config = { ...defaults, ...parsed };
+        state.config = sanitizeConfig(parsed);
         if ((Number(parsed.configVersion) || 0) < defaults.configVersion) {
             state.config.enableConsoleStats = defaults.enableConsoleStats;
-            state.config.configVersion = defaults.configVersion;
         }
-        state.config = sanitizeConfig(state.config);
         localStorage.setItem("offline-yolo-switchboard", JSON.stringify(state.config));
     } catch {
         localStorage.removeItem("offline-yolo-switchboard");

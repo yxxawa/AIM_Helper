@@ -318,7 +318,3 @@ dotnet build .\host\AIM_Helper.Host.csproj -c Release
 cmake -S . -B build -DOpenCV_DIR="D:\deps\opencv\build" -DONNXRUNTIME_DIR="D:\deps\onnxruntime-win-x64-gpu-1.24.3"
 cmake --build build --config Release
 ```
-
-## 许可证
-
-当前整理目录未包含 `LICENSE`。如果你要把它作为开源项目发布，请先添加明确的许可证文件，否则别人没有合法复用、修改、分发代码的权限。

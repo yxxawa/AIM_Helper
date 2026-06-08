@@ -3024,6 +3024,12 @@ private:
     }
 
     const Detection* preferredLockedPart(const TargetEntity& entity) const {
+        if (cfg.auto_target_part && cfg.aim_part_priority == "head") {
+            return entity.head ? entity.head : entity.body;
+        }
+        if (cfg.auto_target_part && cfg.aim_part_priority == "other") {
+            return entity.body ? entity.body : entity.head;
+        }
         if (target_lock_part == "head" && entity.head) {
             return entity.head;
         }
@@ -3045,7 +3051,9 @@ private:
         if (target_lock_camp_id >= 0 && ClassCampId(candidate.selected->class_id) != target_lock_camp_id) {
             return false;
         }
-        if (!target_lock_part.empty() && target_lock_part != "custom" && candidate.part != target_lock_part) {
+        const bool part_switch_allowed = cfg.auto_target_part
+            && (cfg.aim_part_priority == "head" || cfg.aim_part_priority == "other");
+        if (!part_switch_allowed && !target_lock_part.empty() && target_lock_part != "custom" && candidate.part != target_lock_part) {
             return false;
         }
         return true;

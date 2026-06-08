@@ -145,12 +145,12 @@ public:
     double prediction_output_smoothing = 0.20;
     double prediction_servo_gain = 0.65;
     bool enable_drone_tracking = false;
-    double drone_track_gain = 1.15;
-    double drone_track_velocity_gain = 0.18;
-    double drone_track_damping = 0.28;
-    double drone_track_smoothing = 0.55;
-    int drone_track_max_move_pixels = 140;
-    double drone_track_deadzone_pixels = 0.8;
+    double drone_track_gain = 1.35;
+    double drone_track_velocity_gain = 0.55;
+    double drone_track_damping = 0.18;
+    double drone_track_smoothing = 0.78;
+    int drone_track_max_move_pixels = 220;
+    double drone_track_deadzone_pixels = 0.3;
     double target_x_ratio = 0.5;
     double target_y_ratio = 0.3;
     bool auto_target_part = true;
@@ -574,7 +574,7 @@ static Config ConfigFromArgs(int argc, wchar_t* argv[]) {
         else if (ReadArgValue(arg, L"drone-track-velocity-gain", value)) cfg.drone_track_velocity_gain = std::clamp(ReadDouble(NarrowAscii(value), cfg.drone_track_velocity_gain), 0.0, 3.0);
         else if (ReadArgValue(arg, L"drone-track-damping", value)) cfg.drone_track_damping = std::clamp(ReadDouble(NarrowAscii(value), cfg.drone_track_damping), 0.0, 3.0);
         else if (ReadArgValue(arg, L"drone-track-smoothing", value)) cfg.drone_track_smoothing = std::clamp(ReadDouble(NarrowAscii(value), cfg.drone_track_smoothing), 0.02, 1.0);
-        else if (ReadArgValue(arg, L"drone-track-max-move", value)) cfg.drone_track_max_move_pixels = std::clamp(ReadInt(NarrowAscii(value), cfg.drone_track_max_move_pixels), 1, 500);
+        else if (ReadArgValue(arg, L"drone-track-max-move", value)) cfg.drone_track_max_move_pixels = std::clamp(ReadInt(NarrowAscii(value), cfg.drone_track_max_move_pixels), 1, 800);
         else if (ReadArgValue(arg, L"drone-track-deadzone", value)) cfg.drone_track_deadzone_pixels = std::clamp(ReadDouble(NarrowAscii(value), cfg.drone_track_deadzone_pixels), 0.0, 30.0);
         else if (ReadArgValue(arg, L"target-x", value)) cfg.target_x_ratio = std::clamp(ReadDouble(NarrowAscii(value), cfg.target_x_ratio), 0.0, 1.0);
         else if (ReadArgValue(arg, L"target-y", value)) cfg.target_y_ratio = std::clamp(ReadDouble(NarrowAscii(value), cfg.target_y_ratio), 0.0, 1.0);
@@ -2652,7 +2652,7 @@ private:
         next.drone_track_velocity_gain = std::clamp(ReadLiveDouble(values, "drone_track_velocity_gain", next.drone_track_velocity_gain), 0.0, 3.0);
         next.drone_track_damping = std::clamp(ReadLiveDouble(values, "drone_track_damping", next.drone_track_damping), 0.0, 3.0);
         next.drone_track_smoothing = std::clamp(ReadLiveDouble(values, "drone_track_smoothing", next.drone_track_smoothing), 0.02, 1.0);
-        next.drone_track_max_move_pixels = std::clamp(ReadLiveInt(values, "drone_track_max_move", next.drone_track_max_move_pixels), 1, 500);
+        next.drone_track_max_move_pixels = std::clamp(ReadLiveInt(values, "drone_track_max_move", next.drone_track_max_move_pixels), 1, 800);
         next.drone_track_deadzone_pixels = std::clamp(ReadLiveDouble(values, "drone_track_deadzone", next.drone_track_deadzone_pixels), 0.0, 30.0);
         next.enable_visualization = ReadLiveBool(values, "enable_visualization", next.enable_visualization);
 
@@ -3559,7 +3559,14 @@ private:
             drone_tracking.command.y *= scale;
         }
 
-        auto raw = mapAimOffsetToMouse(drone_tracking.command.x, drone_tracking.command.y);
+        const double mode_scale = cfg.aim_mode == "atan"
+            ? (static_cast<double>(std::max(1, cfg.crop_size)) /
+                (static_cast<double>(std::max(1, cfg.crop_size)) + std::hypot(drone_tracking.command.x, drone_tracking.command.y) * 0.15))
+            : 1.0;
+        std::pair<double, double> raw{
+            drone_tracking.command.x * mode_scale,
+            drone_tracking.command.y * mode_scale
+        };
         last_raw_move_x = raw.first;
         last_raw_move_y = raw.second;
         last_aim_point_source = "drone";

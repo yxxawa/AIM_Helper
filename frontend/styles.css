@@ -419,6 +419,7 @@ h2 {
 .app-shell[data-view="mouse"] .panel-block[data-page~="mouse"],
 .app-shell[data-view="humanSlide"] .panel-block[data-page~="humanSlide"],
 .app-shell[data-view="prediction"] .panel-block[data-page~="prediction"],
+.app-shell[data-view="droneTracking"] .panel-block[data-page~="droneTracking"],
 .app-shell[data-view="autoClick"] .panel-block[data-page~="autoClick"],
 .app-shell[data-view="target"] .panel-block[data-page~="target"],
 .app-shell[data-view="dependencies"] .panel-block[data-page~="dependencies"] {

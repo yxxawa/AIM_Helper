@@ -105,6 +105,16 @@
                 </label>
 
                 <label class="switch-card">
+                    <input id="enableDroneTracking" type="checkbox">
+                    <span class="switch-ui"></span>
+                    <span class="switch-copy">
+                        <strong>仿无人机追踪</strong>
+                        <small id="droneTrackingSwitchLabel">OFF</small>
+                    </span>
+                    <button class="settings-button" type="button" data-open-page="droneTracking">设置</button>
+                </label>
+
+                <label class="switch-card">
                     <input id="enableAutoClick" type="checkbox">
                     <span class="switch-ui"></span>
                     <span class="switch-copy">
@@ -412,6 +422,43 @@
                         <span>跳变重置 <b id="predictionResetPixelsValue">70</b> px</span>
                         <input id="predictionResetPixels" type="range" min="20" max="240" step="5" value="70">
                     </label>
+                </section>
+
+                <section class="panel-block drone-tracking-slot" id="droneTrackingSlot" data-page="droneTracking">
+                    <div class="section-title">
+                        <h2>仿无人机追踪</h2>
+                        <small id="droneTrackingLabel">OFF</small>
+                    </div>
+                    <div class="hotkey-grid">
+                        <label class="field range-field">
+                            <span>主增益 <b id="droneTrackGainValue">1.15</b></span>
+                            <input id="droneTrackGain" type="range" min="0.10" max="3.00" step="0.01" value="1.15">
+                        </label>
+                        <label class="field range-field">
+                            <span>速度前馈 <b id="droneTrackVelocityGainValue">0.18</b></span>
+                            <input id="droneTrackVelocityGain" type="range" min="0.00" max="2.00" step="0.01" value="0.18">
+                        </label>
+                    </div>
+                    <div class="hotkey-grid">
+                        <label class="field range-field">
+                            <span>误差阻尼 <b id="droneTrackDampingValue">0.28</b></span>
+                            <input id="droneTrackDamping" type="range" min="0.00" max="2.00" step="0.01" value="0.28">
+                        </label>
+                        <label class="field range-field">
+                            <span>响应平滑 <b id="droneTrackSmoothingValue">0.55</b></span>
+                            <input id="droneTrackSmoothing" type="range" min="0.02" max="1.00" step="0.01" value="0.55">
+                        </label>
+                    </div>
+                    <div class="hotkey-grid">
+                        <label class="field range-field">
+                            <span>单帧限幅 <b id="droneTrackMaxMoveValue">140</b> px</span>
+                            <input id="droneTrackMaxMove" type="range" min="10" max="300" step="1" value="140">
+                        </label>
+                        <label class="field range-field">
+                            <span>追踪死区 <b id="droneTrackDeadzoneValue">0.8</b> px</span>
+                            <input id="droneTrackDeadzone" type="range" min="0.0" max="10.0" step="0.1" value="0.8">
+                        </label>
+                    </div>
                 </section>
 
                 <section class="panel-block human-slide-slot" id="humanSlideSlot" data-page="humanSlide">

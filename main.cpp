@@ -144,6 +144,13 @@ public:
     double prediction_noise_pixels = 1.5;
     double prediction_output_smoothing = 0.20;
     double prediction_servo_gain = 0.65;
+    bool enable_drone_tracking = false;
+    double drone_track_gain = 1.15;
+    double drone_track_velocity_gain = 0.18;
+    double drone_track_damping = 0.28;
+    double drone_track_smoothing = 0.55;
+    int drone_track_max_move_pixels = 140;
+    double drone_track_deadzone_pixels = 0.8;
     double target_x_ratio = 0.5;
     double target_y_ratio = 0.3;
     bool auto_target_part = true;
@@ -562,6 +569,13 @@ static Config ConfigFromArgs(int argc, wchar_t* argv[]) {
         else if (ReadArgValue(arg, L"prediction-noise-pixels", value)) cfg.prediction_noise_pixels = std::clamp(ReadDouble(NarrowAscii(value), cfg.prediction_noise_pixels), 0.0, 20.0);
         else if (ReadArgValue(arg, L"prediction-output-smoothing", value)) cfg.prediction_output_smoothing = std::clamp(ReadDouble(NarrowAscii(value), cfg.prediction_output_smoothing), 0.0, 1.0);
         else if (ReadArgValue(arg, L"prediction-servo-gain", value)) cfg.prediction_servo_gain = std::clamp(ReadDouble(NarrowAscii(value), cfg.prediction_servo_gain), 0.0, 2.0);
+        else if (ReadArgValue(arg, L"drone-tracking", value)) cfg.enable_drone_tracking = ReadBoolText(NarrowAscii(value), cfg.enable_drone_tracking);
+        else if (ReadArgValue(arg, L"drone-track-gain", value)) cfg.drone_track_gain = std::clamp(ReadDouble(NarrowAscii(value), cfg.drone_track_gain), 0.01, 5.0);
+        else if (ReadArgValue(arg, L"drone-track-velocity-gain", value)) cfg.drone_track_velocity_gain = std::clamp(ReadDouble(NarrowAscii(value), cfg.drone_track_velocity_gain), 0.0, 3.0);
+        else if (ReadArgValue(arg, L"drone-track-damping", value)) cfg.drone_track_damping = std::clamp(ReadDouble(NarrowAscii(value), cfg.drone_track_damping), 0.0, 3.0);
+        else if (ReadArgValue(arg, L"drone-track-smoothing", value)) cfg.drone_track_smoothing = std::clamp(ReadDouble(NarrowAscii(value), cfg.drone_track_smoothing), 0.02, 1.0);
+        else if (ReadArgValue(arg, L"drone-track-max-move", value)) cfg.drone_track_max_move_pixels = std::clamp(ReadInt(NarrowAscii(value), cfg.drone_track_max_move_pixels), 1, 500);
+        else if (ReadArgValue(arg, L"drone-track-deadzone", value)) cfg.drone_track_deadzone_pixels = std::clamp(ReadDouble(NarrowAscii(value), cfg.drone_track_deadzone_pixels), 0.0, 30.0);
         else if (ReadArgValue(arg, L"target-x", value)) cfg.target_x_ratio = std::clamp(ReadDouble(NarrowAscii(value), cfg.target_x_ratio), 0.0, 1.0);
         else if (ReadArgValue(arg, L"target-y", value)) cfg.target_y_ratio = std::clamp(ReadDouble(NarrowAscii(value), cfg.target_y_ratio), 0.0, 1.0);
         else if (ReadArgValue(arg, L"enemy-camp", value)) cfg.enemy_camp = NormalizeEnemyCamp(NarrowAscii(value));
@@ -2103,6 +2117,33 @@ struct PredictionTracker {
     }
 };
 
+struct DroneTrackingState {
+    bool initialized = false;
+    cv::Point2d last_measurement{ 0.0, 0.0 };
+    cv::Point2d velocity{ 0.0, 0.0 };
+    cv::Point2d last_error{ 0.0, 0.0 };
+    cv::Point2d command{ 0.0, 0.0 };
+    std::chrono::steady_clock::time_point last_time{};
+
+    void Reset() {
+        initialized = false;
+        last_measurement = cv::Point2d(0.0, 0.0);
+        velocity = cv::Point2d(0.0, 0.0);
+        last_error = cv::Point2d(0.0, 0.0);
+        command = cv::Point2d(0.0, 0.0);
+        last_time = {};
+    }
+
+    void Initialize(const cv::Point2d& measurement, const cv::Point2d& error, std::chrono::steady_clock::time_point now) {
+        initialized = true;
+        last_measurement = measurement;
+        velocity = cv::Point2d(0.0, 0.0);
+        last_error = error;
+        command = cv::Point2d(0.0, 0.0);
+        last_time = now;
+    }
+};
+
 // --- 5. 核心协调器 (AimAssistant) ---
 class AimAssistant {
 public:
@@ -2163,6 +2204,13 @@ public:
             << ", noise=" << cfg.prediction_noise_pixels
             << ", output_smoothing=" << cfg.prediction_output_smoothing
             << ", servo_gain=" << cfg.prediction_servo_gain << " ---" << std::endl;
+        std::cout << "--- Drone tracking: " << (cfg.enable_drone_tracking ? "on" : "off")
+            << ", gain=" << cfg.drone_track_gain
+            << ", velocity=" << cfg.drone_track_velocity_gain
+            << ", damping=" << cfg.drone_track_damping
+            << ", smoothing=" << cfg.drone_track_smoothing
+            << ", max_move=" << cfg.drone_track_max_move_pixels
+            << ", deadzone=" << cfg.drone_track_deadzone_pixels << " ---" << std::endl;
         std::cout << "--- Aim hotkeys: primary=" << KeyNameFromVk(cfg.smooth_aim_key)
             << ", secondary=" << KeyNameFromVk(cfg.smooth_aim_secondary_key) << " ---" << std::endl;
         std::cout << "--- Mouse slide: humanized=" << (cfg.enable_humanized_movement ? "on" : "off")
@@ -2507,6 +2555,13 @@ private:
         next.prediction_noise_pixels = std::clamp(ReadLiveDouble(values, "prediction_noise_pixels", next.prediction_noise_pixels), 0.0, 20.0);
         next.prediction_output_smoothing = std::clamp(ReadLiveDouble(values, "prediction_output_smoothing", next.prediction_output_smoothing), 0.0, 1.0);
         next.prediction_servo_gain = std::clamp(ReadLiveDouble(values, "prediction_servo_gain", next.prediction_servo_gain), 0.0, 2.0);
+        next.enable_drone_tracking = ReadLiveBool(values, "drone_tracking_enabled", next.enable_drone_tracking);
+        next.drone_track_gain = std::clamp(ReadLiveDouble(values, "drone_track_gain", next.drone_track_gain), 0.01, 5.0);
+        next.drone_track_velocity_gain = std::clamp(ReadLiveDouble(values, "drone_track_velocity_gain", next.drone_track_velocity_gain), 0.0, 3.0);
+        next.drone_track_damping = std::clamp(ReadLiveDouble(values, "drone_track_damping", next.drone_track_damping), 0.0, 3.0);
+        next.drone_track_smoothing = std::clamp(ReadLiveDouble(values, "drone_track_smoothing", next.drone_track_smoothing), 0.02, 1.0);
+        next.drone_track_max_move_pixels = std::clamp(ReadLiveInt(values, "drone_track_max_move", next.drone_track_max_move_pixels), 1, 500);
+        next.drone_track_deadzone_pixels = std::clamp(ReadLiveDouble(values, "drone_track_deadzone", next.drone_track_deadzone_pixels), 0.0, 30.0);
         next.enable_visualization = ReadLiveBool(values, "enable_visualization", next.enable_visualization);
 
         const bool detector_changed =
@@ -2574,6 +2629,13 @@ private:
             old_cfg.prediction_noise_pixels != next.prediction_noise_pixels ||
             old_cfg.prediction_output_smoothing != next.prediction_output_smoothing ||
             old_cfg.prediction_servo_gain != next.prediction_servo_gain ||
+            old_cfg.enable_drone_tracking != next.enable_drone_tracking ||
+            old_cfg.drone_track_gain != next.drone_track_gain ||
+            old_cfg.drone_track_velocity_gain != next.drone_track_velocity_gain ||
+            old_cfg.drone_track_damping != next.drone_track_damping ||
+            old_cfg.drone_track_smoothing != next.drone_track_smoothing ||
+            old_cfg.drone_track_max_move_pixels != next.drone_track_max_move_pixels ||
+            old_cfg.drone_track_deadzone_pixels != next.drone_track_deadzone_pixels ||
             old_cfg.enable_humanized_movement != next.enable_humanized_movement ||
             old_cfg.human_move_max_step != next.human_move_max_step ||
             old_cfg.human_move_jitter != next.human_move_jitter ||
@@ -2618,6 +2680,13 @@ private:
             << ",R=" << cfg.prediction_kalman_measurement_noise
             << ",Q=" << cfg.prediction_kalman_process_noise
             << ",servo=" << cfg.prediction_servo_gain << ")"
+            << ", drone_tracking=" << (cfg.enable_drone_tracking ? "on" : "off")
+            << "(gain=" << cfg.drone_track_gain
+            << ",vel=" << cfg.drone_track_velocity_gain
+            << ",damping=" << cfg.drone_track_damping
+            << ",smooth=" << cfg.drone_track_smoothing
+            << ",max=" << cfg.drone_track_max_move_pixels
+            << ",deadzone=" << cfg.drone_track_deadzone_pixels << ")"
             << ", human_slide=" << (cfg.enable_humanized_movement ? "on" : "off")
             << "(" << cfg.human_move_max_step << "," << cfg.human_move_jitter
             << "," << cfg.human_move_delay_min_ms << "-" << cfg.human_move_delay_max_ms << "ms)"
@@ -2867,6 +2936,7 @@ private:
 
     void resetPrediction() {
         prediction_tracker.Reset();
+        drone_tracking.Reset();
         last_prediction_dx = 0;
         last_prediction_dy = 0;
     }
@@ -2938,6 +3008,11 @@ private:
         }
 
         target.measured_point = target.point;
+        if (cfg.enable_drone_tracking) {
+            prediction_tracker.Reset();
+            last_aim_point_source = "drone";
+            return target;
+        }
         if (cfg.prediction_mode == "off" || cfg.prediction_lead_ms <= 0.0 || cfg.prediction_max_pixels <= 0) {
             if (cfg.prediction_mode == "off") {
                 prediction_tracker.Reset();
@@ -3182,6 +3257,128 @@ private:
         return ff;
     }
 
+    bool computeDroneTrackingMove(const TargetLock& target, bool use_carry, int& move_x, int& move_y) {
+        move_x = 0;
+        move_y = 0;
+        last_tracking_boost_active = false;
+        last_servo_direct_move = false;
+        if (!cfg.enable_drone_tracking || !target.valid) {
+            drone_tracking.Reset();
+            return false;
+        }
+
+        const auto now = std::chrono::steady_clock::now();
+        const cv::Point2d measurement(
+            static_cast<double>(target.point.x),
+            static_cast<double>(target.point.y));
+        const cv::Point2d error(
+            measurement.x - static_cast<double>(crop_center.x),
+            measurement.y - static_cast<double>(crop_center.y));
+        const double error_len = std::hypot(error.x, error.y);
+        const bool was_initialized = drone_tracking.initialized;
+        if (!was_initialized) {
+            drone_tracking.Initialize(measurement, error, now);
+        }
+
+        double dt = was_initialized
+            ? std::chrono::duration<double>(now - drone_tracking.last_time).count()
+            : (1.0 / 144.0);
+        dt = std::clamp(dt, 0.001, 0.1);
+
+        const double jump = std::hypot(
+            measurement.x - drone_tracking.last_measurement.x,
+            measurement.y - drone_tracking.last_measurement.y);
+        if (was_initialized && jump > static_cast<double>(std::max(cfg.prediction_reset_pixels, cfg.drone_track_max_move_pixels * 2))) {
+            drone_tracking.Initialize(measurement, error, now);
+            last_raw_move_x = 0.0;
+            last_raw_move_y = 0.0;
+            last_gate_state = "drone_reset";
+            return false;
+        }
+
+        const cv::Point2d raw_velocity = was_initialized
+            ? cv::Point2d(
+                (measurement.x - drone_tracking.last_measurement.x) / dt,
+                (measurement.y - drone_tracking.last_measurement.y) / dt)
+            : cv::Point2d(0.0, 0.0);
+        const double smoothing = std::clamp(cfg.drone_track_smoothing, 0.02, 1.0);
+        drone_tracking.velocity = cv::Point2d(
+            smoothing * raw_velocity.x + (1.0 - smoothing) * drone_tracking.velocity.x,
+            smoothing * raw_velocity.y + (1.0 - smoothing) * drone_tracking.velocity.y);
+
+        const cv::Point2d derivative = was_initialized
+            ? cv::Point2d(
+                (error.x - drone_tracking.last_error.x) / dt,
+                (error.y - drone_tracking.last_error.y) / dt)
+            : cv::Point2d(0.0, 0.0);
+
+        const double effective_dt = std::clamp(smoothed_total > 0.0 ? smoothed_total / 1000.0 : dt, 0.001, 0.05);
+        cv::Point2d control_error(
+            cfg.drone_track_gain * error.x,
+            cfg.drone_track_gain * error.y);
+        cv::Point2d control_velocity(
+            cfg.drone_track_velocity_gain * drone_tracking.velocity.x * effective_dt,
+            cfg.drone_track_velocity_gain * drone_tracking.velocity.y * effective_dt);
+        cv::Point2d control_damping(
+            cfg.drone_track_damping * derivative.x * effective_dt,
+            cfg.drone_track_damping * derivative.y * effective_dt);
+
+        cv::Point2d desired(
+            control_error.x + control_velocity.x + control_damping.x,
+            control_error.y + control_velocity.y + control_damping.y);
+
+        const double command_alpha = std::clamp(cfg.drone_track_smoothing, 0.02, 1.0);
+        drone_tracking.command = cv::Point2d(
+            command_alpha * desired.x + (1.0 - command_alpha) * drone_tracking.command.x,
+            command_alpha * desired.y + (1.0 - command_alpha) * drone_tracking.command.y);
+
+        const double limit = static_cast<double>(std::max(1, cfg.drone_track_max_move_pixels));
+        const double command_len = std::hypot(drone_tracking.command.x, drone_tracking.command.y);
+        if (command_len > limit && command_len > 0.001) {
+            const double scale = limit / command_len;
+            drone_tracking.command.x *= scale;
+            drone_tracking.command.y *= scale;
+        }
+
+        auto raw = mapAimOffsetToMouse(drone_tracking.command.x, drone_tracking.command.y);
+        last_raw_move_x = raw.first;
+        last_raw_move_y = raw.second;
+        last_aim_point_source = "drone";
+        last_prediction_dx = static_cast<int>(std::lround(drone_tracking.command.x));
+        last_prediction_dy = static_cast<int>(std::lround(drone_tracking.command.y));
+
+        if (error_len <= std::max(0.0, cfg.drone_track_deadzone_pixels) && std::hypot(raw.first, raw.second) < 0.5) {
+            drone_tracking.last_measurement = measurement;
+            drone_tracking.last_error = error;
+            drone_tracking.last_time = now;
+            last_gate_state = "drone_deadzone";
+            if (use_carry) {
+                resetAimCarry();
+            }
+            return false;
+        }
+
+        if (use_carry) {
+            move_x = takeMouseDelta(raw.first, aim_carry_x, cfg.drone_track_max_move_pixels);
+            move_y = takeMouseDelta(raw.second, aim_carry_y, cfg.drone_track_max_move_pixels);
+        }
+        else {
+            move_x = toMouseDelta(raw.first, cfg.drone_track_max_move_pixels);
+            move_y = toMouseDelta(raw.second, cfg.drone_track_max_move_pixels);
+        }
+
+        drone_tracking.last_measurement = measurement;
+        drone_tracking.last_error = error;
+        drone_tracking.last_time = now;
+        last_servo_direct_move = true;
+
+        if (move_x == 0 && move_y == 0) {
+            last_gate_state = use_carry ? "drone_accum" : "drone_subpixel";
+            return false;
+        }
+        return true;
+    }
+
     bool shouldUseTrackingBoost(double distance_pixels) const {
         return cfg.enable_tracking_boost &&
             distance_pixels >= std::max(1.0, cfg.tracking_boost_threshold_pixels);
@@ -3243,6 +3440,9 @@ private:
     bool computeAimMove(const TargetLock& target, bool use_carry, int& move_x, int& move_y) {
         move_x = 0;
         move_y = 0;
+        if (cfg.enable_drone_tracking) {
+            return computeDroneTrackingMove(target, use_carry, move_x, move_y);
+        }
         const cv::Point target_point = target.point;
         const double dx_pixels = static_cast<double>(target_point.x - crop_center.x);
         const double dy_pixels = static_cast<double>(target_point.y - crop_center.y);
@@ -3479,7 +3679,7 @@ private:
                 last_move_x = move_x;
                 last_move_y = move_y;
                 last_gate_state = cfg.enable_hold_to_aim ? "hold_move" : "auto_move";
-                last_servo_direct_move = isRealtimeServoTarget(target);
+                last_servo_direct_move = cfg.enable_drone_tracking || isRealtimeServoTarget(target);
                 const Config* movement_cfg = (last_tracking_boost_active || last_servo_direct_move) ? nullptr : &cfg;
                 mouse->MoveRelative(move_x, move_y, movement_cfg);
             }
@@ -3637,7 +3837,7 @@ private:
                 << " | Move: " << last_move_x << "," << last_move_y
                 << " | AutoClick: " << last_auto_click_state
                 << " | AutoStop: " << last_auto_stop_state
-                << " | Track: " << (last_tracking_boost_active ? "boost" : "normal")
+                << " | Track: " << (cfg.enable_drone_tracking ? "drone" : (last_tracking_boost_active ? "boost" : "normal"))
                 << " | Slide: " << (cfg.enable_humanized_movement && !last_tracking_boost_active && !last_servo_direct_move ? "human" : "direct")
                 << "        " << std::flush;
         }
@@ -3729,6 +3929,7 @@ private:
     OneEuroAxis euro_x;
     OneEuroAxis euro_y;
     PredictionTracker prediction_tracker;
+    DroneTrackingState drone_tracking;
     std::chrono::steady_clock::time_point last_filter_time{};
     bool filter_time_initialized = false;
     std::chrono::steady_clock::time_point last_live_config_check{};

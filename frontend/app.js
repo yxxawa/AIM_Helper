@@ -2,7 +2,7 @@ const root = document.querySelector(".app-shell");
 const eventLog = document.querySelector("#eventLog");
 
 const defaults = {
-    configVersion: 17,
+    configVersion: 18,
     backend: "cpu",
     inputBackend: "dd",
     modelPath: "",
@@ -40,6 +40,13 @@ const defaults = {
     predictionNoisePixels: 1.5,
     predictionOutputSmoothing: 0.20,
     predictionServoGain: 0.65,
+    enableDroneTracking: false,
+    droneTrackGain: 1.15,
+    droneTrackVelocityGain: 0.18,
+    droneTrackDamping: 0.28,
+    droneTrackSmoothing: 0.55,
+    droneTrackMaxMove: 140,
+    droneTrackDeadzone: 0.8,
     targetX: 0.5,
     targetY: 0.3,
     enableAutoAimPart: true,
@@ -130,6 +137,7 @@ const controls = {
     aimHotkeySwitchLabel: $("#aimHotkeySwitchLabel"),
     humanSlideSwitchLabel: $("#humanSlideSwitchLabel"),
     predictionSwitchLabel: $("#predictionSwitchLabel"),
+    droneTrackingSwitchLabel: $("#droneTrackingSwitchLabel"),
     autoClickSwitchLabel: $("#autoClickSwitchLabel"),
     modelPath: $("#modelPath"),
     inputBackend: $("#inputBackend"),
@@ -189,6 +197,14 @@ const controls = {
     predictionNoisePixels: $("#predictionNoisePixels"),
     predictionOutputSmoothing: $("#predictionOutputSmoothing"),
     predictionServoGain: $("#predictionServoGain"),
+    droneTrackingSlot: $("#droneTrackingSlot"),
+    droneTrackingLabel: $("#droneTrackingLabel"),
+    droneTrackGain: $("#droneTrackGain"),
+    droneTrackVelocityGain: $("#droneTrackVelocityGain"),
+    droneTrackDamping: $("#droneTrackDamping"),
+    droneTrackSmoothing: $("#droneTrackSmoothing"),
+    droneTrackMaxMove: $("#droneTrackMaxMove"),
+    droneTrackDeadzone: $("#droneTrackDeadzone"),
     cropSize: $("#cropSize"),
     lockRadius: $("#lockRadius"),
     confidence: $("#confidence"),
@@ -236,6 +252,12 @@ const controls = {
     predictionNoisePixelsValue: $("#predictionNoisePixelsValue"),
     predictionOutputSmoothingValue: $("#predictionOutputSmoothingValue"),
     predictionServoGainValue: $("#predictionServoGainValue"),
+    droneTrackGainValue: $("#droneTrackGainValue"),
+    droneTrackVelocityGainValue: $("#droneTrackVelocityGainValue"),
+    droneTrackDampingValue: $("#droneTrackDampingValue"),
+    droneTrackSmoothingValue: $("#droneTrackSmoothingValue"),
+    droneTrackMaxMoveValue: $("#droneTrackMaxMoveValue"),
+    droneTrackDeadzoneValue: $("#droneTrackDeadzoneValue"),
     humanSlideMaxStepValue: $("#humanSlideMaxStepValue"),
     humanSlideJitterValue: $("#humanSlideJitterValue"),
     humanSlideDelayMinValue: $("#humanSlideDelayMinValue"),
@@ -259,6 +281,7 @@ const controls = {
         enableTrackingBoost: $("#enableTrackingBoost"),
         enableHumanSlide: $("#enableHumanSlide"),
         enablePrediction: $("#enablePrediction"),
+        enableDroneTracking: $("#enableDroneTracking"),
         enableAutoClick: $("#enableAutoClick"),
         enableHoldToAim: $("#enableHoldToAim"),
         enableVisualization: $("#enableVisualization"),
@@ -341,6 +364,10 @@ const settingsPages = {
     prediction: {
         title: "预瞄",
         hint: "线性、Alpha-Beta、卡尔曼参数"
+    },
+    droneTracking: {
+        title: "仿无人机追踪",
+        hint: "视觉伺服、速度前馈、单帧限幅"
     },
     autoClick: {
         title: "自动扳机",
@@ -1188,6 +1215,12 @@ function syncUiFromConfig() {
     controls.predictionNoisePixels.value = state.config.predictionNoisePixels;
     controls.predictionOutputSmoothing.value = state.config.predictionOutputSmoothing;
     controls.predictionServoGain.value = state.config.predictionServoGain;
+    controls.droneTrackGain.value = state.config.droneTrackGain;
+    controls.droneTrackVelocityGain.value = state.config.droneTrackVelocityGain;
+    controls.droneTrackDamping.value = state.config.droneTrackDamping;
+    controls.droneTrackSmoothing.value = state.config.droneTrackSmoothing;
+    controls.droneTrackMaxMove.value = state.config.droneTrackMaxMove;
+    controls.droneTrackDeadzone.value = state.config.droneTrackDeadzone;
     controls.cropSize.value = state.config.cropSize;
     controls.lockRadius.value = state.config.lockRadius;
     controls.confidence.value = state.config.confidence;
@@ -1294,6 +1327,12 @@ function syncConfigFromUi() {
     state.config.predictionNoisePixels = Number(controls.predictionNoisePixels.value);
     state.config.predictionOutputSmoothing = Number(controls.predictionOutputSmoothing.value);
     state.config.predictionServoGain = Number(controls.predictionServoGain.value);
+    state.config.droneTrackGain = Number(controls.droneTrackGain.value);
+    state.config.droneTrackVelocityGain = Number(controls.droneTrackVelocityGain.value);
+    state.config.droneTrackDamping = Number(controls.droneTrackDamping.value);
+    state.config.droneTrackSmoothing = Number(controls.droneTrackSmoothing.value);
+    state.config.droneTrackMaxMove = Number(controls.droneTrackMaxMove.value);
+    state.config.droneTrackDeadzone = Number(controls.droneTrackDeadzone.value);
     state.config.cropSize = Number(controls.cropSize.value);
     state.config.lockRadius = Number(controls.lockRadius.value);
     state.config.confidence = Number(controls.confidence.value);
@@ -1354,6 +1393,16 @@ function updateLabels() {
     controls.predictionOutputSmoothingValue.textContent = state.config.predictionOutputSmoothing.toFixed(2);
     controls.predictionServoGainValue.textContent = state.config.predictionServoGain.toFixed(2);
     controls.predictionAccelerationSmoothingValue.textContent = state.config.predictionAccelerationSmoothing.toFixed(2);
+    controls.droneTrackGainValue.textContent = state.config.droneTrackGain.toFixed(2);
+    controls.droneTrackVelocityGainValue.textContent = state.config.droneTrackVelocityGain.toFixed(2);
+    controls.droneTrackDampingValue.textContent = state.config.droneTrackDamping.toFixed(2);
+    controls.droneTrackSmoothingValue.textContent = state.config.droneTrackSmoothing.toFixed(2);
+    controls.droneTrackMaxMoveValue.textContent = state.config.droneTrackMaxMove.toFixed(0);
+    controls.droneTrackDeadzoneValue.textContent = state.config.droneTrackDeadzone.toFixed(1);
+    controls.droneTrackingLabel.textContent = state.config.enableDroneTracking
+        ? `${state.config.droneTrackGain.toFixed(2)} / ${state.config.droneTrackMaxMove.toFixed(0)}px`
+        : "OFF";
+    controls.droneTrackingSwitchLabel.textContent = controls.droneTrackingLabel.textContent;
     const predictionModeText = predictionModeLabel(state.config.predictionMode);
     controls.predictionLabel.textContent = state.config.enablePrediction
         ? `${predictionModeText} ${state.config.predictionLeadMs.toFixed(0)}ms`
@@ -1363,6 +1412,7 @@ function updateLabels() {
     controls.predictionSlot.dataset.predictionMode = ["linear", "arc", "hybrid", "adaptive", "servo", "alphabeta", "kalman"].includes(state.config.predictionMode)
         ? state.config.predictionMode
         : "linear";
+    controls.droneTrackingSlot.dataset.droneTrackingEnabled = String(state.config.enableDroneTracking);
     controls.humanSlideMaxStepValue.textContent = state.config.humanSlideMaxStep.toFixed(0);
     controls.humanSlideJitterValue.textContent = state.config.humanSlideJitter.toFixed(1);
     controls.humanSlideDelayMinValue.textContent = state.config.humanSlideDelayMin.toFixed(0);
@@ -1638,6 +1688,12 @@ function bindEvents() {
         controls.predictionNoisePixels,
         controls.predictionOutputSmoothing,
         controls.predictionServoGain,
+        controls.droneTrackGain,
+        controls.droneTrackVelocityGain,
+        controls.droneTrackDamping,
+        controls.droneTrackSmoothing,
+        controls.droneTrackMaxMove,
+        controls.droneTrackDeadzone,
         controls.cropSize,
         controls.lockRadius,
         controls.confidence,

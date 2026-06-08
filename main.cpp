@@ -1396,11 +1396,9 @@ public:
 
         hr = CreateDXGIFactory1(__uuidof(IDXGIFactory1), (void**)&pFactory);
         if (FAILED(hr)) throw std::runtime_error("Failed to create DXGI Factory.");
-        if (FAILED(pFactory->EnumAdapters1(0, &pAdapter))) throw std::runtime_error("Failed to enumerate adapters.");
-        if (FAILED(pAdapter->EnumOutputs(0, &pOutput))) throw std::runtime_error("Failed to enumerate outputs.");
 
-        DXGI_OUTPUT_DESC outputDesc;
-        pOutput->GetDesc(&outputDesc);
+        DXGI_OUTPUT_DESC outputDesc{};
+        SelectPrimaryOutput(outputDesc);
         width = outputDesc.DesktopCoordinates.right - outputDesc.DesktopCoordinates.left;
         height = outputDesc.DesktopCoordinates.bottom - outputDesc.DesktopCoordinates.top;
 
@@ -1431,7 +1429,11 @@ public:
         if (FAILED(hr)) {
             throw std::runtime_error("Failed to create staging texture for cropping.");
         }
-        std::cout << "--- Screen capture initialized successfully (" << width << "x" << height << ") ---" << std::endl;
+        std::cout << "--- Screen capture initialized successfully (" << width << "x" << height
+            << "), desktop_rect=(" << outputDesc.DesktopCoordinates.left << ","
+            << outputDesc.DesktopCoordinates.top << ")-("
+            << outputDesc.DesktopCoordinates.right << ","
+            << outputDesc.DesktopCoordinates.bottom << ") ---" << std::endl;
     }
 
     ~ScreenCapturer() {
@@ -1499,6 +1501,94 @@ public:
     int getHeight() const { return height; }
 
 private:
+    void SelectPrimaryOutput(DXGI_OUTPUT_DESC& selected_desc) {
+        const RECT primary_rect{
+            0,
+            0,
+            ::GetSystemMetrics(SM_CXSCREEN),
+            ::GetSystemMetrics(SM_CYSCREEN)
+        };
+        const POINT primary_center{
+            (primary_rect.right - primary_rect.left) / 2,
+            (primary_rect.bottom - primary_rect.top) / 2
+        };
+
+        IDXGIAdapter1* fallback_adapter = nullptr;
+        IDXGIOutput* fallback_output = nullptr;
+        DXGI_OUTPUT_DESC fallback_desc{};
+
+        for (UINT adapter_index = 0;; ++adapter_index) {
+            IDXGIAdapter1* candidate_adapter = nullptr;
+            HRESULT adapter_hr = pFactory->EnumAdapters1(adapter_index, &candidate_adapter);
+            if (adapter_hr == DXGI_ERROR_NOT_FOUND) {
+                break;
+            }
+            if (FAILED(adapter_hr) || !candidate_adapter) {
+                continue;
+            }
+
+            bool adapter_taken = false;
+            for (UINT output_index = 0;; ++output_index) {
+                IDXGIOutput* candidate_output = nullptr;
+                HRESULT output_hr = candidate_adapter->EnumOutputs(output_index, &candidate_output);
+                if (output_hr == DXGI_ERROR_NOT_FOUND) {
+                    break;
+                }
+                if (FAILED(output_hr) || !candidate_output) {
+                    continue;
+                }
+
+                DXGI_OUTPUT_DESC desc{};
+                candidate_output->GetDesc(&desc);
+                const RECT& rect = desc.DesktopCoordinates;
+                const bool contains_primary_center =
+                    primary_center.x >= rect.left &&
+                    primary_center.x < rect.right &&
+                    primary_center.y >= rect.top &&
+                    primary_center.y < rect.bottom;
+
+                if (contains_primary_center) {
+                    if (fallback_output) {
+                        SafeRelease(&fallback_output);
+                        SafeRelease(&fallback_adapter);
+                    }
+                    pAdapter = candidate_adapter;
+                    pOutput = candidate_output;
+                    selected_desc = desc;
+                    adapter_taken = true;
+                    std::cout << "--- Primary display selected: "
+                        << (primary_rect.right - primary_rect.left) << "x"
+                        << (primary_rect.bottom - primary_rect.top) << " ---" << std::endl;
+                    return;
+                }
+                else if (!fallback_output) {
+                    fallback_adapter = candidate_adapter;
+                    fallback_output = candidate_output;
+                    fallback_desc = desc;
+                    adapter_taken = true;
+                }
+                else {
+                    SafeRelease(&candidate_output);
+                }
+            }
+
+            if (!adapter_taken) {
+                SafeRelease(&candidate_adapter);
+            }
+        }
+
+        if (!fallback_output || !fallback_adapter) {
+            throw std::runtime_error("Failed to enumerate outputs.");
+        }
+
+        pAdapter = fallback_adapter;
+        pOutput = fallback_output;
+        selected_desc = fallback_desc;
+        std::cout << "--- Primary display not matched; using first DXGI output. Windows primary="
+            << (primary_rect.right - primary_rect.left) << "x"
+            << (primary_rect.bottom - primary_rect.top) << " ---" << std::endl;
+    }
+
     ID3D11Texture2D* m_pStagingTexture = nullptr;
     IDXGIFactory1* pFactory = nullptr;
     IDXGIAdapter1* pAdapter = nullptr;
@@ -3268,9 +3358,12 @@ private:
         }
 
         const auto now = std::chrono::steady_clock::now();
+        const cv::Point locked_part_point = target.selected
+            ? BoxCenter(target.selected->box)
+            : target.point;
         const cv::Point2d measurement(
-            static_cast<double>(target.point.x),
-            static_cast<double>(target.point.y));
+            static_cast<double>(locked_part_point.x),
+            static_cast<double>(locked_part_point.y));
         const cv::Point2d error(
             measurement.x - static_cast<double>(crop_center.x),
             measurement.y - static_cast<double>(crop_center.y));
@@ -3312,22 +3405,28 @@ private:
                 (error.y - drone_tracking.last_error.y) / dt)
             : cv::Point2d(0.0, 0.0);
 
-        const double effective_dt = std::clamp(smoothed_total > 0.0 ? smoothed_total / 1000.0 : dt, 0.001, 0.05);
+        const double observed_dt = std::clamp(smoothed_total > 0.0 ? smoothed_total / 1000.0 : dt, 0.001, 0.05);
+        const double response_horizon = std::clamp(observed_dt + (1.0 / 120.0), 0.012, 0.08);
         cv::Point2d control_error(
             cfg.drone_track_gain * error.x,
             cfg.drone_track_gain * error.y);
         cv::Point2d control_velocity(
-            cfg.drone_track_velocity_gain * drone_tracking.velocity.x * effective_dt,
-            cfg.drone_track_velocity_gain * drone_tracking.velocity.y * effective_dt);
+            cfg.drone_track_velocity_gain * drone_tracking.velocity.x * response_horizon,
+            cfg.drone_track_velocity_gain * drone_tracking.velocity.y * response_horizon);
         cv::Point2d control_damping(
-            cfg.drone_track_damping * derivative.x * effective_dt,
-            cfg.drone_track_damping * derivative.y * effective_dt);
+            cfg.drone_track_damping * derivative.x * response_horizon,
+            cfg.drone_track_damping * derivative.y * response_horizon);
 
         cv::Point2d desired(
             control_error.x + control_velocity.x + control_damping.x,
             control_error.y + control_velocity.y + control_damping.y);
 
-        const double command_alpha = std::clamp(cfg.drone_track_smoothing, 0.02, 1.0);
+        const double target_speed = std::hypot(drone_tracking.velocity.x, drone_tracking.velocity.y);
+        const double speed_ramp = std::clamp(target_speed / 900.0, 0.0, 1.0);
+        const double command_alpha = std::clamp(
+            cfg.drone_track_smoothing + (1.0 - cfg.drone_track_smoothing) * speed_ramp,
+            0.08,
+            1.0);
         drone_tracking.command = cv::Point2d(
             command_alpha * desired.x + (1.0 - command_alpha) * drone_tracking.command.x,
             command_alpha * desired.y + (1.0 - command_alpha) * drone_tracking.command.y);
@@ -4012,6 +4111,9 @@ static int RunInputBackendSelfTest(const Config& cfg) {
 // --- 主函数 ---
 int wmain(int argc, wchar_t* argv[]) {
     try {
+        if (!::SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)) {
+            ::SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_SYSTEM_AWARE);
+        }
         Config cfg = ConfigFromArgs(argc, argv);
         if (cfg.input_self_test) {
             return RunInputBackendSelfTest(cfg);

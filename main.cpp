@@ -22,6 +22,7 @@
 #include <condition_variable>
 #include <mutex>
 #include <array>
+#include <ctime>
 
 // Windows & DirectX
 #include <windows.h>
@@ -296,6 +297,54 @@ static std::string TrimAscii(std::string value) {
     }
     const auto last = value.find_last_not_of(" \t\r\n");
     return value.substr(first, last - first + 1);
+}
+
+static std::string JsonEscape(const std::string& value) {
+    std::ostringstream out;
+    for (unsigned char ch : value) {
+        switch (ch) {
+        case '\\': out << "\\\\"; break;
+        case '"': out << "\\\""; break;
+        case '\b': out << "\\b"; break;
+        case '\f': out << "\\f"; break;
+        case '\n': out << "\\n"; break;
+        case '\r': out << "\\r"; break;
+        case '\t': out << "\\t"; break;
+        default:
+            if (ch < 0x20) {
+                out << "\\u" << std::hex << std::setw(4) << std::setfill('0')
+                    << static_cast<int>(ch) << std::dec << std::setfill(' ');
+            }
+            else {
+                out << static_cast<char>(ch);
+            }
+            break;
+        }
+    }
+    return out.str();
+}
+
+static std::string CurrentLocalTimestampForFile() {
+    const auto now = std::chrono::system_clock::now();
+    const std::time_t now_time = std::chrono::system_clock::to_time_t(now);
+    std::tm local_time{};
+    localtime_s(&local_time, &now_time);
+    std::ostringstream out;
+    out << std::put_time(&local_time, "%Y%m%d_%H%M%S");
+    return out.str();
+}
+
+static std::string CurrentLocalTimestampIso() {
+    const auto now = std::chrono::system_clock::now();
+    const std::time_t now_time = std::chrono::system_clock::to_time_t(now);
+    const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+        now.time_since_epoch()).count() % 1000;
+    std::tm local_time{};
+    localtime_s(&local_time, &now_time);
+    std::ostringstream out;
+    out << std::put_time(&local_time, "%Y-%m-%dT%H:%M:%S")
+        << "." << std::setw(3) << std::setfill('0') << ms << std::setfill(' ');
+    return out.str();
 }
 
 static bool ReadBoolText(const std::string& value, bool fallback) {
@@ -2348,6 +2397,7 @@ public:
     }
 
     ~AimAssistant() {
+        flushAimSampleLogIfNeeded(true);
         if (is_visualizing) cv::destroyAllWindows();
     }
 
@@ -2409,6 +2459,7 @@ public:
             timings.input_ms = std::chrono::duration<double, std::milli>(input_end_time - input_start_time).count();
             auto core_loop_end_time = std::chrono::steady_clock::now();
             timings.total_loop_ms = std::chrono::duration<double, std::milli>(core_loop_end_time - loop_start_time).count();
+            recordAimSampleFrame(best_target, aim_allowed_for_lock);
 
             bool should_exit = false;
             if (is_visualizing) {
@@ -3526,6 +3577,191 @@ private:
         return ff;
     }
 
+    std::string aimSampleSettingsJson() const {
+        std::ostringstream out;
+        out << std::boolalpha << std::setprecision(10)
+            << "\"backend\":\"" << JsonEscape(cfg.backend) << "\""
+            << ",\"input_backend\":\"" << JsonEscape(cfg.input_backend) << "\""
+            << ",\"driver_type\":" << cfg.driver_type
+            << ",\"crop_size\":" << cfg.crop_size
+            << ",\"lock_radius\":" << cfg.max_lock_distance_pixels
+            << ",\"confidence\":" << cfg.confidence_threshold
+            << ",\"aim_key\":" << cfg.smooth_aim_key
+            << ",\"aim_key2\":" << cfg.smooth_aim_secondary_key
+            << ",\"aim_mode\":\"" << JsonEscape(cfg.aim_mode) << "\""
+            << ",\"aim_gain\":" << cfg.aim_gain
+            << ",\"smoothing\":" << cfg.aim_smoothing
+            << ",\"deadzone\":" << cfg.aim_deadzone_pixels
+            << ",\"aim_filter\":\"" << JsonEscape(cfg.aim_filter_mode) << "\""
+            << ",\"pid_kp\":" << cfg.pid_kp
+            << ",\"pid_ki\":" << cfg.pid_ki
+            << ",\"pid_kd\":" << cfg.pid_kd
+            << ",\"pid_i_limit\":" << cfg.pid_integral_limit
+            << ",\"one_euro_min_cutoff\":" << cfg.one_euro_min_cutoff
+            << ",\"one_euro_beta\":" << cfg.one_euro_beta
+            << ",\"one_euro_d_cutoff\":" << cfg.one_euro_d_cutoff
+            << ",\"prediction_mode\":\"" << JsonEscape(cfg.prediction_mode) << "\""
+            << ",\"prediction_lead_ms\":" << cfg.prediction_lead_ms
+            << ",\"prediction_smoothing\":" << cfg.prediction_smoothing
+            << ",\"prediction_acceleration_smoothing\":" << cfg.prediction_acceleration_smoothing
+            << ",\"prediction_alpha\":" << cfg.prediction_alpha
+            << ",\"prediction_beta\":" << cfg.prediction_beta
+            << ",\"prediction_kalman_measurement_noise\":" << cfg.prediction_kalman_measurement_noise
+            << ",\"prediction_kalman_process_noise\":" << cfg.prediction_kalman_process_noise
+            << ",\"prediction_max_pixels\":" << cfg.prediction_max_pixels
+            << ",\"prediction_reset_pixels\":" << cfg.prediction_reset_pixels
+            << ",\"prediction_noise_pixels\":" << cfg.prediction_noise_pixels
+            << ",\"prediction_output_smoothing\":" << cfg.prediction_output_smoothing
+            << ",\"prediction_servo_gain\":" << cfg.prediction_servo_gain
+            << ",\"drone_tracking\":" << cfg.enable_drone_tracking
+            << ",\"drone_track_controller\":\"" << JsonEscape(cfg.drone_track_controller) << "\""
+            << ",\"drone_track_gain\":" << cfg.drone_track_gain
+            << ",\"drone_track_velocity_gain\":" << cfg.drone_track_velocity_gain
+            << ",\"drone_track_damping\":" << cfg.drone_track_damping
+            << ",\"drone_track_smoothing\":" << cfg.drone_track_smoothing
+            << ",\"drone_track_max_move\":" << cfg.drone_track_max_move_pixels
+            << ",\"drone_track_deadzone\":" << cfg.drone_track_deadzone_pixels
+            << ",\"drone_track_position_gain\":" << cfg.drone_track_position_gain
+            << ",\"drone_track_velocity_damping\":" << cfg.drone_track_velocity_damping
+            << ",\"drone_track_accel_limit\":" << cfg.drone_track_accel_limit
+            << ",\"drone_track_visp_lambda\":" << cfg.drone_track_visp_lambda
+            << ",\"drone_track_visp_damping\":" << cfg.drone_track_visp_damping
+            << ",\"auto_target_part\":" << cfg.auto_target_part
+            << ",\"aim_part_priority\":\"" << JsonEscape(cfg.aim_part_priority) << "\""
+            << ",\"target_x\":" << cfg.target_x_ratio
+            << ",\"target_y\":" << cfg.target_y_ratio
+            << ",\"enemy_camp\":\"" << JsonEscape(cfg.enemy_camp) << "\""
+            << ",\"detection_part\":\"" << JsonEscape(cfg.detection_part) << "\""
+            << ",\"max_move\":" << cfg.max_move_pixels
+            << ",\"tracking_boost_enabled\":" << cfg.enable_tracking_boost
+            << ",\"tracking_boost_threshold\":" << cfg.tracking_boost_threshold_pixels
+            << ",\"tracking_boost_gain\":" << cfg.tracking_boost_gain
+            << ",\"tracking_boost_max_move\":" << cfg.tracking_boost_max_move_pixels
+            << ",\"human_slide_enabled\":" << cfg.enable_humanized_movement
+            << ",\"human_slide_max_step\":" << cfg.human_move_max_step
+            << ",\"human_slide_jitter\":" << cfg.human_move_jitter
+            << ",\"human_slide_delay_min\":" << cfg.human_move_delay_min_ms
+            << ",\"human_slide_delay_max\":" << cfg.human_move_delay_max_ms
+            << ",\"auto_click_enabled\":" << cfg.enable_auto_click
+            << ",\"auto_click_delay_min\":" << cfg.auto_click_delay_min_ms
+            << ",\"auto_click_delay_max\":" << cfg.auto_click_delay_max_ms
+            << ",\"auto_click_interval_min\":" << cfg.auto_click_interval_min_ms
+            << ",\"auto_click_interval_max\":" << cfg.auto_click_interval_max_ms
+            << ",\"auto_click_tolerance\":" << cfg.auto_click_tolerance_pixels
+            << ",\"auto_stop_enabled\":" << cfg.enable_auto_stop
+            << ",\"auto_stop_mode\":\"" << JsonEscape(cfg.auto_stop_mode) << "\""
+            << ",\"auto_stop_hold_ms\":" << cfg.auto_stop_hold_ms
+            << ",\"auto_stop_settle_ms\":" << cfg.auto_stop_settle_ms
+            << ",\"enable_capture\":" << cfg.enable_capture
+            << ",\"enable_async_capture\":" << cfg.enable_async_capture
+            << ",\"enable_mouse_move\":" << cfg.enable_mouse_movement
+            << ",\"enable_hold_to_aim\":" << cfg.enable_hold_to_aim
+            << ",\"bounded_movement\":" << cfg.bounded_movement;
+        return out.str();
+    }
+
+    void ensureAimSampleLogOpen() {
+        if (aim_sample_log_opened) {
+            return;
+        }
+        std::filesystem::path dir = std::filesystem::current_path() / "aim_samples";
+        std::error_code ec;
+        std::filesystem::create_directories(dir, ec);
+        aim_sample_log_path = dir / ("aim_samples_" + CurrentLocalTimestampForFile() + ".jsonl");
+        aim_sample_log.open(aim_sample_log_path, std::ios::out | std::ios::app);
+        aim_sample_log_opened = aim_sample_log.is_open();
+        if (aim_sample_log_opened) {
+            std::cout << "\n[INFO] Aim sample log: " << aim_sample_log_path.string() << std::endl;
+        }
+        else {
+            std::cerr << "\n[WARN] Failed to open aim sample log: " << aim_sample_log_path.string() << std::endl;
+        }
+    }
+
+    void writeAimSampleSettingsIfNeeded() {
+        ensureAimSampleLogOpen();
+        if (!aim_sample_log_opened) {
+            return;
+        }
+        const std::string settings = aimSampleSettingsJson();
+        if (settings == last_aim_sample_settings_json) {
+            return;
+        }
+        last_aim_sample_settings_json = settings;
+        aim_sample_log << "{\"type\":\"settings\",\"ts\":\"" << CurrentLocalTimestampIso()
+            << "\",\"frame\":" << aim_sample_frame_index
+            << ",\"settings\":{" << settings << "}}\n";
+        ++aim_sample_lines_since_flush;
+    }
+
+    void flushAimSampleLogIfNeeded(bool force = false) {
+        if (!aim_sample_log_opened) {
+            return;
+        }
+        if (force || aim_sample_lines_since_flush >= 120) {
+            aim_sample_log.flush();
+            aim_sample_lines_since_flush = 0;
+        }
+    }
+
+    void recordAimSampleFrame(const TargetLock& target, bool aim_triggered) {
+        if (!aim_triggered || !target.valid) {
+            return;
+        }
+        writeAimSampleSettingsIfNeeded();
+        if (!aim_sample_log_opened) {
+            return;
+        }
+
+        const cv::Point2d measured = target.selected
+            ? BoxCenterPrecise(target.selected->box)
+            : cv::Point2d(static_cast<double>(target.measured_point.x), static_cast<double>(target.measured_point.y));
+        const cv::Point2d aim_point(static_cast<double>(target.point.x), static_cast<double>(target.point.y));
+        const cv::Point2d crosshair(static_cast<double>(crop_center.x), static_cast<double>(crop_center.y));
+        const double measured_error_x = measured.x - crosshair.x;
+        const double measured_error_y = measured.y - crosshair.y;
+        const double aim_error_x = aim_point.x - crosshair.x;
+        const double aim_error_y = aim_point.y - crosshair.y;
+        const int class_id = target.selected ? target.selected->class_id : -1;
+        const float confidence = target.selected ? target.selected->confidence : 0.0f;
+        const cv::Rect selected_box = target.selected ? target.selected->box : target.box;
+
+        aim_sample_log << std::boolalpha << std::fixed << std::setprecision(3)
+            << "{\"type\":\"sample\",\"ts\":\"" << CurrentLocalTimestampIso() << "\""
+            << ",\"frame\":" << aim_sample_frame_index++
+            << ",\"part\":\"" << JsonEscape(target.part) << "\""
+            << ",\"class_id\":" << class_id
+            << ",\"confidence\":" << confidence
+            << ",\"crosshair\":{\"x\":" << crosshair.x << ",\"y\":" << crosshair.y << "}"
+            << ",\"target\":{\"x\":" << measured.x << ",\"y\":" << measured.y << "}"
+            << ",\"aim_point\":{\"x\":" << aim_point.x << ",\"y\":" << aim_point.y << "}"
+            << ",\"target_box\":{\"x\":" << selected_box.x << ",\"y\":" << selected_box.y
+            << ",\"w\":" << selected_box.width << ",\"h\":" << selected_box.height << "}"
+            << ",\"entity_box\":{\"x\":" << target.box.x << ",\"y\":" << target.box.y
+            << ",\"w\":" << target.box.width << ",\"h\":" << target.box.height << "}"
+            << ",\"measured_error\":{\"x\":" << measured_error_x << ",\"y\":" << measured_error_y
+            << ",\"dist\":" << std::hypot(measured_error_x, measured_error_y) << "}"
+            << ",\"aim_error\":{\"x\":" << aim_error_x << ",\"y\":" << aim_error_y
+            << ",\"dist\":" << std::hypot(aim_error_x, aim_error_y) << "}"
+            << ",\"lead\":{\"x\":" << last_prediction_dx << ",\"y\":" << last_prediction_dy << "}"
+            << ",\"raw_move\":{\"x\":" << last_raw_move_x << ",\"y\":" << last_raw_move_y << "}"
+            << ",\"move\":{\"x\":" << last_move_x << ",\"y\":" << last_move_y << "}"
+            << ",\"gate\":\"" << JsonEscape(last_gate_state) << "\""
+            << ",\"track\":\"" << (cfg.enable_drone_tracking ? "drone" : (last_tracking_boost_active ? "boost" : "normal")) << "\""
+            << ",\"aim_point_source\":\"" << JsonEscape(last_aim_point_source) << "\""
+            << ",\"detections\":" << last_detection_count
+            << ",\"targetable_entities\":" << last_targetable_detection_count
+            << ",\"timing_ms\":{\"total\":" << timings.total_loop_ms
+            << ",\"capture\":" << timings.capture_ms
+            << ",\"preprocess\":" << timings.preprocess_ms
+            << ",\"inference\":" << timings.inference_ms
+            << ",\"postprocess\":" << timings.postprocess_ms
+            << ",\"targeting\":" << timings.targeting_ms
+            << ",\"input\":" << timings.input_ms << "}}\n";
+        ++aim_sample_lines_since_flush;
+        flushAimSampleLogIfNeeded(false);
+    }
+
     bool computeDroneTrackingMove(const TargetLock& target, bool use_carry, int& move_x, int& move_y) {
         move_x = 0;
         move_y = 0;
@@ -4311,6 +4547,12 @@ private:
     int last_auto_stop_released_key = 0;
     bool last_auto_stop_release_initialized = false;
     std::chrono::steady_clock::time_point last_auto_stop_release_time{};
+    std::ofstream aim_sample_log;
+    std::filesystem::path aim_sample_log_path;
+    bool aim_sample_log_opened = false;
+    std::string last_aim_sample_settings_json;
+    uint64_t aim_sample_frame_index = 0;
+    int aim_sample_lines_since_flush = 0;
 };
 
 static int RunInputBackendSelfTest(const Config& cfg) {

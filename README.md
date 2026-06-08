@@ -293,28 +293,3 @@ models\cs2yolomaax.onnx
 
 安装 Microsoft Edge WebView2 Runtime。
 
-## 发布到 GitHub 前检查
-
-不要提交：
-
-- `models/`
-- `deps/`
-- `backend/`
-- `drivers/`
-- `engine_cache/`
-- `downloads/`
-- `host/bin/`
-- `host/obj/`
-- NVIDIA/OpenCV/ONNX Runtime/TensorRT/CUDA/cuDNN DLL
-- 驱动 DLL 或签名二进制
-- 本机绝对路径
-- 运行配置文件
-
-推荐验证：
-
-```powershell
-node --check .\frontend\app.js
-dotnet build .\host\AIM_Helper.Host.csproj -c Release
-cmake -S . -B build -DOpenCV_DIR="D:\deps\opencv\build" -DONNXRUNTIME_DIR="D:\deps\onnxruntime-win-x64-gpu-1.24.3"
-cmake --build build --config Release
-```

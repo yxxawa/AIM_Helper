@@ -40,11 +40,14 @@ public sealed class MainForm : Form
     private Process? backendProcess;
     private bool backendReady;
     private bool hasSavedConfig;
+    private volatile bool consoleStatsEnabled;
     private bool tensorRtCacheNoticeShown;
     private string lastConfigJson = "{}";
     private readonly ConcurrentDictionary<string, byte> activeDownloads = new(StringComparer.OrdinalIgnoreCase);
     private static string RuntimeConfigJsonPath => Path.Combine(AppContext.BaseDirectory, "runtime-config.json");
     private static string LiveConfigPath => Path.Combine(AppContext.BaseDirectory, "runtime-config.live");
+    private static string RepoRoot => Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+    private static readonly string[] BackendExecutableNames = ["AIM_Helper_Backend.exe", "offline_yolo_mouse_assistant.exe"];
     private static readonly string[] DdDriverDllNames = ["dd60300.dll"];
     private static readonly string[] GenericDriverDllNames =
     [
@@ -335,16 +338,7 @@ public sealed class MainForm : Form
 
         string workingDirectory = ResolveRuntimeDirectory(backendPath);
         MaybeShowTensorRtCacheNotice(workingDirectory, lastConfigJson);
-        ProcessStartInfo startInfo = new()
-        {
-            FileName = backendPath,
-            WorkingDirectory = workingDirectory,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true
-        };
-        SetEnvironmentPath(startInfo, BuildRuntimePath(workingDirectory, GetEnvironmentPath(startInfo), lastConfigJson));
+        ProcessStartInfo startInfo = CreateBackendStartInfo(backendPath, workingDirectory, lastConfigJson);
         PostInputBackendNote(lastConfigJson);
         addArguments(startInfo);
         PostLog($"{testName} started");
@@ -410,16 +404,8 @@ public sealed class MainForm : Form
         }
 
         string workingDirectory = ResolveRuntimeDirectory(backendPath);
-        ProcessStartInfo startInfo = new()
-        {
-            FileName = backendPath,
-            WorkingDirectory = workingDirectory,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true
-        };
-        SetEnvironmentPath(startInfo, BuildRuntimePath(workingDirectory, GetEnvironmentPath(startInfo), lastConfigJson));
+        MaybeShowTensorRtCacheNotice(workingDirectory, lastConfigJson);
+        ProcessStartInfo startInfo = CreateBackendStartInfo(backendPath, workingDirectory, lastConfigJson);
         PostInputBackendNote(lastConfigJson);
         AddBackendArguments(startInfo, lastConfigJson);
 
@@ -472,6 +458,21 @@ public sealed class MainForm : Form
             PostLog($"backend start failed: {ex.Message}");
             PostState(false);
         }
+    }
+
+    private static ProcessStartInfo CreateBackendStartInfo(string backendPath, string workingDirectory, string configJson)
+    {
+        ProcessStartInfo startInfo = new()
+        {
+            FileName = backendPath,
+            WorkingDirectory = workingDirectory,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true
+        };
+        SetEnvironmentPath(startInfo, BuildRuntimePath(workingDirectory, GetEnvironmentPath(startInfo), configJson));
+        return startInfo;
     }
 
     private void MaybeShowTensorRtCacheNotice(string workingDirectory, string configJson)
@@ -550,28 +551,22 @@ public sealed class MainForm : Form
 
     private static string? ResolveBackendPath(JsonElement config)
     {
-        string repoRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
         string configuredBackend = GetDependencyPath(config, "backendExe");
         if (!string.IsNullOrWhiteSpace(configuredBackend) && File.Exists(configuredBackend))
         {
             return configuredBackend;
         }
 
-        string[] candidates =
+        string[] directories =
         [
-            Path.Combine(AppContext.BaseDirectory, "backend", "AIM_Helper_Backend.exe"),
-            Path.Combine(AppContext.BaseDirectory, "backend", "offline_yolo_mouse_assistant.exe"),
-            Path.Combine(repoRoot, "build_ninja2", "AIM_Helper_Backend.exe"),
-            Path.Combine(repoRoot, "build_ninja2", "offline_yolo_mouse_assistant.exe"),
-            Path.Combine(repoRoot, "build_ninja", "AIM_Helper_Backend.exe"),
-            Path.Combine(repoRoot, "build_ninja", "offline_yolo_mouse_assistant.exe"),
-            Path.Combine(repoRoot, "build", "Release", "AIM_Helper_Backend.exe"),
-            Path.Combine(repoRoot, "build", "Release", "offline_yolo_mouse_assistant.exe"),
-            Path.Combine(repoRoot, "build", "AIM_Helper_Backend.exe"),
-            Path.Combine(repoRoot, "build", "offline_yolo_mouse_assistant.exe")
+            Path.Combine(AppContext.BaseDirectory, "backend"),
+            Path.Combine(RepoRoot, "build_ninja2"),
+            Path.Combine(RepoRoot, "build_ninja"),
+            Path.Combine(RepoRoot, "build", "Release"),
+            Path.Combine(RepoRoot, "build")
         ];
 
-        return candidates.FirstOrDefault(File.Exists);
+        return FindFirstExistingFile(directories, BackendExecutableNames);
     }
 
     private static string ResolveRuntimeDirectory(string backendPath)
@@ -590,13 +585,12 @@ public sealed class MainForm : Form
     {
         string appDirectory = AppContext.BaseDirectory;
         string backendDirectory = Path.GetDirectoryName(ResolveBackendPath(config) ?? string.Empty) ?? string.Empty;
-        string repoRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
         string[] runtimeDirectories =
         [
             appDirectory,
             workingDirectory,
             backendDirectory,
-            repoRoot,
+            RepoRoot,
             Path.Combine(appDirectory, "runtime"),
             Path.Combine(appDirectory, "deps"),
             Path.Combine(appDirectory, "deps", "onnxruntime"),
@@ -609,16 +603,16 @@ public sealed class MainForm : Form
             Path.Combine(appDirectory, "deps", "tensorrt", "lib"),
             Path.Combine(backendDirectory, "runtime"),
             Path.Combine(backendDirectory, "deps"),
-            Path.Combine(repoRoot, "runtime"),
-            Path.Combine(repoRoot, "deps"),
-            Path.Combine(repoRoot, "deps", "onnxruntime"),
-            Path.Combine(repoRoot, "deps", "onnxruntime", "runtimes", "win-x64", "native"),
-            Path.Combine(repoRoot, "deps", "opencv"),
-            Path.Combine(repoRoot, "deps", "opencv", "x64", "vc16", "bin"),
-            Path.Combine(repoRoot, "deps", "opencv", "build", "x64", "vc16", "bin"),
-            Path.Combine(repoRoot, "deps", "cuda", "bin"),
-            Path.Combine(repoRoot, "deps", "tensorrt", "bin"),
-            Path.Combine(repoRoot, "deps", "tensorrt", "lib"),
+            Path.Combine(RepoRoot, "runtime"),
+            Path.Combine(RepoRoot, "deps"),
+            Path.Combine(RepoRoot, "deps", "onnxruntime"),
+            Path.Combine(RepoRoot, "deps", "onnxruntime", "runtimes", "win-x64", "native"),
+            Path.Combine(RepoRoot, "deps", "opencv"),
+            Path.Combine(RepoRoot, "deps", "opencv", "x64", "vc16", "bin"),
+            Path.Combine(RepoRoot, "deps", "opencv", "build", "x64", "vc16", "bin"),
+            Path.Combine(RepoRoot, "deps", "cuda", "bin"),
+            Path.Combine(RepoRoot, "deps", "tensorrt", "bin"),
+            Path.Combine(RepoRoot, "deps", "tensorrt", "lib"),
             GetDependencyPath(config, "onnxRuntimeDir"),
             GetDependencyPath(config, "opencvDir"),
             GetDependencyPath(config, "cudaDir"),
@@ -660,7 +654,6 @@ public sealed class MainForm : Form
             return modelPath;
         }
 
-        string repoRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
         string backendDirectory = Path.GetDirectoryName(ResolveBackendPath(config) ?? string.Empty) ?? string.Empty;
         string[] modelNames = string.IsNullOrWhiteSpace(modelPath)
             ? ["cs2yolomaax.onnx"]
@@ -673,8 +666,8 @@ public sealed class MainForm : Form
             Path.Combine(AppContext.BaseDirectory, "backend", "models"),
             backendDirectory,
             Path.Combine(backendDirectory, "models"),
-            repoRoot,
-            Path.Combine(repoRoot, "models")
+            RepoRoot,
+            Path.Combine(RepoRoot, "models")
         ];
         string[] candidates = modelNames
             .SelectMany(name => searchDirectories.Select(directory => Path.Combine(directory, name)))
@@ -706,7 +699,6 @@ public sealed class MainForm : Form
     {
         string appDirectory = AppContext.BaseDirectory;
         string backendDirectory = Path.GetDirectoryName(ResolveBackendPath(config) ?? string.Empty) ?? string.Empty;
-        string repoRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
         string configuredDirectory = Path.GetDirectoryName(GetString(config, "driverDllPath", string.Empty)) ?? string.Empty;
 
         string[] directories =
@@ -714,10 +706,10 @@ public sealed class MainForm : Form
             configuredDirectory,
             Path.Combine(appDirectory, "drivers"),
             Path.Combine(backendDirectory, "drivers"),
-            Path.Combine(repoRoot, "drivers"),
+            Path.Combine(RepoRoot, "drivers"),
             backendDirectory,
             appDirectory,
-            repoRoot
+            RepoRoot
         ];
 
         return directories
@@ -1418,6 +1410,7 @@ public sealed class MainForm : Form
 
         lastConfigJson = payload.GetRawText();
         hasSavedConfig = true;
+        consoleStatsEnabled = GetBool(payload, "enableConsoleStats", false);
         try
         {
             WriteTextAtomically(RuntimeConfigJsonPath, lastConfigJson);
@@ -1448,12 +1441,14 @@ public sealed class MainForm : Form
 
             lastConfigJson = document.RootElement.GetRawText();
             hasSavedConfig = true;
+            consoleStatsEnabled = GetBool(document.RootElement, "enableConsoleStats", false);
             WriteTextAtomically(LiveConfigPath, BuildLiveConfigText(document.RootElement));
         }
         catch
         {
             lastConfigJson = "{}";
             hasSavedConfig = false;
+            consoleStatsEnabled = false;
         }
     }
 
@@ -2352,10 +2347,16 @@ public sealed class MainForm : Form
         }
 
         string line = text.Trim();
+        bool backendReadyLine = IsBackendReadyLine(line);
+        if (!consoleStatsEnabled && !backendReadyLine && IsHighFrequencyBackendLine(line))
+        {
+            return;
+        }
+
         PostToUi(() =>
         {
             PostLog(line);
-            if (IsBackendReadyLine(line))
+            if (backendReadyLine)
             {
                 backendReady = true;
                 PostState(true, "running");
@@ -2367,6 +2368,11 @@ public sealed class MainForm : Form
     {
         return line.Contains("Model loaded successfully", StringComparison.OrdinalIgnoreCase)
             || line.Contains("--- Controls ---", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsHighFrequencyBackendLine(string line)
+    {
+        return line.StartsWith("[LIVE]", StringComparison.OrdinalIgnoreCase);
     }
 
     private void PostProcessText(string? text)
@@ -2391,6 +2397,11 @@ public sealed class MainForm : Form
 
     private void PostLog(string text)
     {
+        if (!consoleStatsEnabled)
+        {
+            return;
+        }
+
         string payload = JsonSerializer.Serialize(new { text });
         PostJson("host:log", payload);
     }

@@ -2334,6 +2334,7 @@ public:
                 last_target_available = false;
                 last_gate_state = "capture_off";
                 resetPrediction();
+                resetTargetLock();
                 resetAutoClick("capture_off");
                 std::this_thread::sleep_for(std::chrono::milliseconds(10));
                 continue;
@@ -2355,7 +2356,8 @@ public:
             }
 
             auto targeting_start_time = std::chrono::steady_clock::now();
-            TargetLock best_target = findBestTarget();
+            const bool aim_allowed_for_lock = isAimAllowedThisFrame();
+            TargetLock best_target = findBestTarget(aim_allowed_for_lock);
             best_target = applyPrediction(best_target);
             last_detection_count = static_cast<int>(detections.size());
             last_target_available = best_target.valid;
@@ -2750,6 +2752,7 @@ private:
             resetAimCarry();
             resetAimFilters();
             resetPrediction();
+            resetTargetLock();
         }
         if (auto_click_changed) {
             resetAutoClick("config");
@@ -2817,8 +2820,17 @@ private:
         std::cout << "    [Press ESC in visualization window] to quit." << std::endl;
     }
 
+    static cv::Point2d BoxCenterPrecise(const cv::Rect& box) {
+        return cv::Point2d(
+            static_cast<double>(box.x) + static_cast<double>(box.width) * 0.5,
+            static_cast<double>(box.y) + static_cast<double>(box.height) * 0.5);
+    }
+
     static cv::Point BoxCenter(const cv::Rect& box) {
-        return cv::Point(box.x + box.width / 2, box.y + box.height / 2);
+        const cv::Point2d center = BoxCenterPrecise(box);
+        return cv::Point(
+            static_cast<int>(std::lround(center.x)),
+            static_cast<int>(std::lround(center.y)));
     }
 
     static std::string PartNameForDetection(const Detection* det) {
@@ -2901,6 +2913,26 @@ private:
         return entities;
     }
 
+    TargetLock makeSelectedPartLock(const TargetEntity& entity, const Detection* selected) const {
+        TargetLock lock;
+        lock.valid = true;
+        lock.head = entity.head;
+        lock.body = entity.body;
+        lock.box = entity.bounds;
+
+        if (!selected) {
+            lock.valid = false;
+            return lock;
+        }
+
+        lock.selected = selected;
+        lock.box = selected->box;
+        lock.point = BoxCenter(selected->box);
+        lock.measured_point = lock.point;
+        lock.part = PartNameForDetection(selected);
+        return lock;
+    }
+
     TargetLock makeTargetLock(const TargetEntity& entity) const {
         TargetLock lock;
         lock.valid = true;
@@ -2940,22 +2972,110 @@ private:
             }
         }
 
-        if (!selected) {
-            lock.valid = false;
-            return lock;
-        }
-
-        lock.selected = selected;
-        lock.box = selected->box;
-        lock.point = BoxCenter(selected->box);
-        lock.measured_point = lock.point;
-        lock.part = PartNameForDetection(selected);
-        return lock;
+        return makeSelectedPartLock(entity, selected);
     }
 
-    TargetLock findBestTarget() {
+    const Detection* preferredLockedPart(const TargetEntity& entity) const {
+        if (target_lock_part == "head" && entity.head) {
+            return entity.head;
+        }
+        if (target_lock_part == "other" && entity.body) {
+            return entity.body;
+        }
+        for (const Detection* det : { entity.head, entity.body }) {
+            if (det && det->class_id == target_lock_class_id) {
+                return det;
+            }
+        }
+        return nullptr;
+    }
+
+    bool targetLockConfigCompatible(const TargetLock& candidate) const {
+        if (!target_lock_initialized || !candidate.selected) {
+            return false;
+        }
+        if (target_lock_camp_id >= 0 && ClassCampId(candidate.selected->class_id) != target_lock_camp_id) {
+            return false;
+        }
+        if (!target_lock_part.empty() && target_lock_part != "custom" && candidate.part != target_lock_part) {
+            return false;
+        }
+        return true;
+    }
+
+    TargetLock findExistingLockedTarget(const std::vector<TargetEntity>& entities) const {
+        TargetLock best;
+        double best_score = std::numeric_limits<double>::max();
+        const double threshold = std::max(70.0, static_cast<double>(cfg.max_lock_distance_pixels) * 1.25);
+        for (const TargetEntity& entity : entities) {
+            const Detection* selected = preferredLockedPart(entity);
+            if (!selected) {
+                continue;
+            }
+            TargetLock candidate = cfg.auto_target_part
+                ? makeSelectedPartLock(entity, selected)
+                : makeTargetLock(entity);
+            if (!candidate.valid || !targetLockConfigCompatible(candidate)) {
+                continue;
+            }
+            const cv::Point center = BoxCenter(selected->box);
+            const double dist = std::hypot(
+                static_cast<double>(center.x - target_lock_point.x),
+                static_cast<double>(center.y - target_lock_point.y));
+            const double size_change = std::abs(selected->box.area() - target_lock_box.area())
+                / static_cast<double>(std::max(1, target_lock_box.area()));
+            const double score = dist + size_change * 18.0;
+            if (dist <= threshold && score < best_score) {
+                best_score = score;
+                best = candidate;
+            }
+        }
+        return best;
+    }
+
+    void resetTargetLock() {
+        target_lock_initialized = false;
+        target_lock_missed_frames = 0;
+        target_lock_point = cv::Point();
+        target_lock_box = cv::Rect();
+        target_lock_part.clear();
+        target_lock_class_id = -1;
+        target_lock_camp_id = -1;
+    }
+
+    void rememberTargetLock(const TargetLock& target) {
+        if (!target.valid || !target.selected) {
+            resetTargetLock();
+            return;
+        }
+        target_lock_initialized = true;
+        target_lock_missed_frames = 0;
+        target_lock_point = BoxCenter(target.selected->box);
+        target_lock_box = target.selected->box;
+        target_lock_part = target.part;
+        target_lock_class_id = target.selected->class_id;
+        target_lock_camp_id = ClassCampId(target.selected->class_id);
+    }
+
+    TargetLock findBestTarget(bool keep_existing_lock) {
         const std::vector<TargetEntity> entities = buildTargetEntities();
         last_targetable_detection_count = static_cast<int>(entities.size());
+
+        if (!keep_existing_lock) {
+            resetTargetLock();
+        }
+        else if (target_lock_initialized) {
+            TargetLock locked = findExistingLockedTarget(entities);
+            if (locked.valid) {
+                rememberTargetLock(locked);
+                return locked;
+            }
+            ++target_lock_missed_frames;
+            if (target_lock_missed_frames <= 3) {
+                return TargetLock{};
+            }
+            resetTargetLock();
+        }
 
         TargetLock best_target;
         double min_dist_to_center = cfg.max_lock_distance_pixels;
@@ -2969,6 +3089,9 @@ private:
                 min_dist_to_center = dist;
                 best_target = candidate;
             }
+        }
+        if (keep_existing_lock && best_target.valid) {
+            rememberTargetLock(best_target);
         }
         return best_target;
     }
@@ -3358,12 +3481,9 @@ private:
         }
 
         const auto now = std::chrono::steady_clock::now();
-        const cv::Point locked_part_point = target.selected
-            ? BoxCenter(target.selected->box)
-            : target.point;
-        const cv::Point2d measurement(
-            static_cast<double>(locked_part_point.x),
-            static_cast<double>(locked_part_point.y));
+        const cv::Point2d measurement = target.selected
+            ? BoxCenterPrecise(target.selected->box)
+            : cv::Point2d(static_cast<double>(target.point.x), static_cast<double>(target.point.y));
         const cv::Point2d error(
             measurement.x - static_cast<double>(crop_center.x),
             measurement.y - static_cast<double>(crop_center.y));
@@ -3788,6 +3908,7 @@ private:
             last_tracking_boost_active = false;
             last_servo_direct_move = false;
             updateRawAimTelemetry(target);
+            resetTargetLock();
             resetAimCarry();
             resetAimFilters();
         }
@@ -4021,6 +4142,13 @@ private:
     int last_prediction_dy = 0;
     bool last_tracking_boost_active = false;
     bool last_servo_direct_move = false;
+    bool target_lock_initialized = false;
+    int target_lock_missed_frames = 0;
+    cv::Point target_lock_point{};
+    cv::Rect target_lock_box{};
+    std::string target_lock_part;
+    int target_lock_class_id = -1;
+    int target_lock_camp_id = -1;
     double aim_carry_x = 0.0;
     double aim_carry_y = 0.0;
     PidAxis pid_x;

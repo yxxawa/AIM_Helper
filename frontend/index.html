@@ -1,0 +1,640 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>AIM_Helper</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <main class="app-shell" data-running="false" data-view="home" data-detail="false">
+        <header class="topbar">
+            <div class="brand-block">
+                <span class="brand-mark" aria-hidden="true"></span>
+                <div>
+                    <h1>AIM_Helper</h1>
+                    <p>YOLO / SendInput</p>
+                </div>
+            </div>
+            <div class="status-strip" aria-label="状态">
+                <span class="status-pill good">LOCAL</span>
+                <button class="status-pill dependency-pill" id="dependencyState" type="button">检测依赖</button>
+                <span class="status-pill" id="runtimeState">STOPPED</span>
+                <span class="status-pill" id="driverState">NO DRIVER</span>
+            </div>
+        </header>
+
+        <section class="actionbar" aria-label="运行命令">
+            <button class="command primary" id="runBtn" type="button">启动后端</button>
+            <button class="command danger" id="stopBtn" type="button">停止后端</button>
+            <button class="command" id="saveBtn" type="button">保存开关</button>
+            <button class="command" id="resetBtn" type="button">默认值</button>
+        </section>
+
+        <section class="page-nav" id="pageNav" aria-label="设置页导航" hidden>
+            <button class="back-button" id="backHomeBtn" type="button">返回首页</button>
+            <div>
+                <h2 id="pageTitle">功能设置</h2>
+                <small id="pageHint">修改会实时保存</small>
+            </div>
+        </section>
+
+        <section class="workspace">
+            <section class="switch-board" aria-label="功能开关">
+                <div class="section-title">
+                    <h2>主功能</h2>
+                    <small id="configState">SAVED</small>
+                </div>
+
+                <label class="switch-card">
+                    <input id="enableCapture" type="checkbox" checked>
+                    <span class="switch-ui"></span>
+                    <span class="switch-copy">
+                        <strong>屏幕捕获</strong>
+                        <small>DXGI + YOLO</small>
+                    </span>
+                </label>
+
+                <label class="switch-card">
+                    <input id="enableVisualization" type="checkbox" checked>
+                    <span class="switch-ui"></span>
+                    <span class="switch-copy">
+                        <strong>显示 YOLO 窗口</strong>
+                        <small>Detection view</small>
+                    </span>
+                </label>
+
+                <label class="switch-card">
+                    <input id="enableAutoAimPart" type="checkbox" checked>
+                    <span class="switch-ui"></span>
+                    <span class="switch-copy">
+                        <strong>自动选择部位</strong>
+                        <small>Target point</small>
+                    </span>
+                    <button class="settings-button" type="button" data-open-page="target">设置</button>
+                </label>
+
+                <label class="switch-card">
+                    <input id="enableMouseMove" type="checkbox" checked>
+                    <span class="switch-ui"></span>
+                    <span class="switch-copy">
+                        <strong>鼠标移动</strong>
+                        <small>SendInput</small>
+                    </span>
+                    <button class="settings-button" type="button" data-open-page="mouse">设置</button>
+                </label>
+
+                <label class="switch-card">
+                    <input id="enableHumanSlide" type="checkbox">
+                    <span class="switch-ui"></span>
+                    <span class="switch-copy">
+                        <strong>仿人类滑动</strong>
+                        <small id="humanSlideSwitchLabel">OFF</small>
+                    </span>
+                    <button class="settings-button" type="button" data-open-page="humanSlide">设置</button>
+                </label>
+
+                <label class="switch-card">
+                    <input id="enablePrediction" type="checkbox">
+                    <span class="switch-ui"></span>
+                    <span class="switch-copy">
+                        <strong>预瞄</strong>
+                        <small id="predictionSwitchLabel">OFF</small>
+                    </span>
+                    <button class="settings-button" type="button" data-open-page="prediction">设置</button>
+                </label>
+
+                <label class="switch-card">
+                    <input id="enableAutoClick" type="checkbox">
+                    <span class="switch-ui"></span>
+                    <span class="switch-copy">
+                        <strong>自动扳机</strong>
+                        <small id="autoClickSwitchLabel">OFF</small>
+                    </span>
+                    <button class="settings-button" type="button" data-open-page="autoClick">设置</button>
+                </label>
+
+                <label class="switch-card">
+                    <input id="enableHoldToAim" type="checkbox" checked>
+                    <span class="switch-ui"></span>
+                    <span class="switch-copy">
+                        <strong>按住热键移动</strong>
+                        <small id="aimHotkeySwitchLabel">鼠标左键 / NONE</small>
+                    </span>
+                    <button class="settings-button" type="button" data-open-page="mouse">设置</button>
+                </label>
+
+                <label class="switch-card">
+                    <input id="boundedMovement" type="checkbox" checked>
+                    <span class="switch-ui"></span>
+                    <span class="switch-copy">
+                        <strong>移动限幅</strong>
+                        <small>Max delta</small>
+                    </span>
+                    <button class="settings-button" type="button" data-open-page="mouse">设置</button>
+                </label>
+
+                <label class="switch-card">
+                    <input id="enableConsoleStats" type="checkbox">
+                    <span class="switch-ui"></span>
+                    <span class="switch-copy">
+                        <strong>显示日志</strong>
+                        <small>默认关闭</small>
+                    </span>
+                    <button class="settings-button" type="button" data-open-page="home">设置</button>
+                </label>
+
+            </section>
+
+            <aside class="settings-panel" aria-label="参数">
+                <section class="panel-block" data-page="home">
+                    <div class="section-title">
+                        <h2>模型</h2>
+                        <small id="backendLabel">TensorRT</small>
+                    </div>
+                    <label class="field">
+                        <span>模型路径</span>
+                        <input id="modelPath" type="text" value="" placeholder="自定义 .onnx 路径；留空自动查找" autocomplete="off">
+                    </label>
+                    <div class="segmented" aria-label="推理后端">
+                        <button class="segment active" type="button" data-backend="tensorrt">TensorRT</button>
+                        <button class="segment" type="button" data-backend="cuda">CUDA</button>
+                        <button class="segment" type="button" data-backend="cpu">CPU</button>
+                    </div>
+                </section>
+
+                <section class="panel-block" data-page="home">
+                    <div class="section-title">
+                        <h2>范围</h2>
+                        <small>Capture</small>
+                    </div>
+                    <label class="field range-field">
+                        <span>截图尺寸 <b id="cropValue">320</b></span>
+                        <input id="cropSize" type="range" min="160" max="960" step="32" value="320">
+                    </label>
+                    <label class="field range-field">
+                        <span>锁定半径 <b id="radiusValue">100</b></span>
+                        <input id="lockRadius" type="range" min="40" max="260" step="5" value="100">
+                    </label>
+                    <label class="field range-field">
+                        <span>置信度 <b id="confidenceValue">0.50</b></span>
+                        <input id="confidence" type="range" min="0.10" max="0.90" step="0.01" value="0.50">
+                    </label>
+                    <label class="field">
+                        <span>己方阵营</span>
+                        <select id="enemyCamp">
+                            <option value="all" selected>ALL（全部）</option>
+                            <option value="ct">CT</option>
+                            <option value="t">T</option>
+                        </select>
+                    </label>
+                    <label class="field">
+                        <span>检测部位</span>
+                        <select id="detectionPart">
+                            <option value="all" selected>ALL（全部）</option>
+                            <option value="head">头部</option>
+                            <option value="body">身体</option>
+                        </select>
+                    </label>
+                    <div class="team-map">
+                        <span>锁定类别</span>
+                        <b id="enemyCampLabel">ALL</b>
+                    </div>
+                    <div class="team-map">
+                        <span>检测部位</span>
+                        <b id="detectionPartLabel">ALL</b>
+                    </div>
+                </section>
+
+                <section class="panel-block" data-page="mouse">
+                    <div class="section-title">
+                        <h2>鼠标</h2>
+                        <small>SendInput</small>
+                    </div>
+                    <div class="hotkey-grid">
+                        <label class="field">
+                            <span>主热键</span>
+                            <button class="hotkey-button" id="aimHotkeyBtn" type="button">鼠标左键</button>
+                        </label>
+                        <label class="field">
+                            <span>副热键</span>
+                            <button class="hotkey-button" id="aimHotkey2Btn" type="button">NONE</button>
+                        </label>
+                    </div>
+                    <label class="field range-field">
+                        <span>平滑 <b id="smoothValue">1.00</b></span>
+                        <input id="smoothing" type="range" min="0.10" max="2.00" step="0.05" value="1.00">
+                    </label>
+                    <label class="field">
+                        <span>映射模式</span>
+                        <select id="aimMode">
+                            <option value="atan" selected>Atan 参考</option>
+                            <option value="linear">线性比例</option>
+                        </select>
+                    </label>
+                    <label class="field range-field">
+                        <span>倍率 <b id="aimGainValue">0.45</b></span>
+                        <input id="aimGain" type="range" min="0.05" max="2.00" step="0.05" value="0.45">
+                    </label>
+                    <label class="field range-field">
+                        <span>死区 <b id="deadzoneValue">1.5</b></span>
+                        <input id="deadzone" type="range" min="0.0" max="12.0" step="0.5" value="1.5">
+                    </label>
+                    <label class="field range-field">
+                        <span>单帧限幅 <b id="maxMoveValue">60</b></span>
+                        <input id="maxMove" type="range" min="10" max="160" step="5" value="60">
+                    </label>
+                    <label class="field inline-switch">
+                        <span>
+                            高速追踪
+                            <small>跑跳目标时直接追赶最新偏移</small>
+                        </span>
+                        <input id="enableTrackingBoost" type="checkbox" checked>
+                        <span class="switch-ui"></span>
+                    </label>
+                    <div class="hotkey-grid" id="trackingBoostFields">
+                        <label class="field range-field">
+                            <span>触发阈值 <b id="trackingBoostThresholdValue">4</b> px</span>
+                            <input id="trackingBoostThreshold" type="range" min="1" max="80" step="1" value="4">
+                        </label>
+                        <label class="field range-field">
+                            <span>追赶倍率 <b id="trackingBoostGainValue">2.00</b></span>
+                            <input id="trackingBoostGain" type="range" min="1.00" max="3.00" step="0.05" value="2.00">
+                        </label>
+                        <label class="field range-field">
+                            <span>追赶限幅 <b id="trackingBoostMaxMoveValue">120</b></span>
+                            <input id="trackingBoostMaxMove" type="range" min="20" max="300" step="5" value="120">
+                        </label>
+                    </div>
+                </section>
+
+                <section class="panel-block auto-click-slot" id="autoClickSlot" data-page="autoClick">
+                    <div class="section-title">
+                        <h2>自动扳机</h2>
+                        <small id="autoClickLabel">OFF</small>
+                    </div>
+                    <label class="field range-field dual-range-field">
+                        <span>
+                            按下延迟
+                            <span class="range-value-pair">
+                                <button class="range-value-button" id="autoClickDelayMinValue" type="button">80</button>
+                                <em>-</em>
+                                <button class="range-value-button" id="autoClickDelayMaxValue" type="button">160</button>
+                            </span>
+                            ms
+                        </span>
+                        <div class="dual-range" id="autoClickDelayRange">
+                            <input id="autoClickDelayMin" type="range" min="0" max="1000" step="5" value="80" aria-label="自动扳机最小按下延迟">
+                            <input id="autoClickDelayMax" type="range" min="0" max="1000" step="5" value="160" aria-label="自动扳机最大按下延迟">
+                        </div>
+                    </label>
+                    <label class="field range-field dual-range-field">
+                        <span>
+                            点击间隔
+                            <span class="range-value-pair">
+                                <button class="range-value-button" id="autoClickIntervalMinValue" type="button">120</button>
+                                <em>-</em>
+                                <button class="range-value-button" id="autoClickIntervalMaxValue" type="button">220</button>
+                            </span>
+                            ms
+                        </span>
+                        <div class="dual-range" id="autoClickIntervalRange">
+                            <input id="autoClickIntervalMin" type="range" min="0" max="1500" step="5" value="120" aria-label="自动扳机最小点击间隔">
+                            <input id="autoClickIntervalMax" type="range" min="0" max="1500" step="5" value="220" aria-label="自动扳机最大点击间隔">
+                        </div>
+                    </label>
+                    <label class="field range-field">
+                        <span>到位容差 <b class="editable-value" id="autoClickToleranceValue" tabindex="0" role="button">3.0</b> px</span>
+                        <input id="autoClickTolerance" type="range" min="0.0" max="20.0" step="0.5" value="3.0">
+                    </label>
+                    <label class="field inline-switch">
+                        <span>
+                            自动急停
+                            <small>触发自动扳机前执行</small>
+                        </span>
+                        <input id="enableAutoStop" type="checkbox">
+                        <span class="switch-ui"></span>
+                    </label>
+                    <label class="field" id="autoStopModeField">
+                        <span>急停方式</span>
+                        <select id="autoStopMode">
+                            <option value="counter_tap" selected>松开位移后反向轻点</option>
+                            <option value="ad_pair">同时按住 A + D</option>
+                            <option value="crouch">见面蹲 Ctrl</option>
+                        </select>
+                    </label>
+                    <label class="field range-field" id="autoStopHoldField">
+                        <span>急停保持 <b class="editable-value" id="autoStopHoldMsValue" tabindex="0" role="button">75</b> ms</span>
+                        <input id="autoStopHoldMs" type="range" min="0" max="250" step="5" value="75">
+                    </label>
+                    <label class="field range-field" id="autoStopSettleField">
+                        <span>开火前等待 <b class="editable-value" id="autoStopSettleMsValue" tabindex="0" role="button">15</b> ms</span>
+                        <input id="autoStopSettleMs" type="range" min="0" max="250" step="5" value="15">
+                    </label>
+                </section>
+
+                <section class="panel-block prediction-slot" id="predictionSlot" data-page="prediction">
+                    <div class="section-title">
+                        <h2>预瞄</h2>
+                        <small id="predictionLabel">OFF</small>
+                    </div>
+                    <label class="field">
+                        <span>算法</span>
+                        <select id="predictionMode">
+                            <option value="linear" selected>线性速度</option>
+                            <option value="arc">弧线预判</option>
+                            <option value="hybrid">综合预判</option>
+                            <option value="adaptive">实时坐标推理</option>
+                            <option value="servo">闭环追踪</option>
+                            <option value="alphabeta">Alpha-Beta</option>
+                            <option value="kalman">卡尔曼滤波</option>
+                        </select>
+                    </label>
+                    <div class="hotkey-grid">
+                        <label class="field range-field">
+                            <span>提前量 <b id="predictionLeadMsValue">20</b> ms</span>
+                            <input id="predictionLeadMs" type="range" min="0" max="120" step="1" value="20">
+                        </label>
+                        <label class="field range-field">
+                            <span>最大预瞄 <b id="predictionMaxPixelsValue">60</b> px</span>
+                            <input id="predictionMaxPixels" type="range" min="0" max="120" step="1" value="60">
+                        </label>
+                    </div>
+                    <div class="hotkey-grid">
+                        <label class="field range-field">
+                            <span>目标噪声 <b id="predictionNoisePixelsValue">1.5</b> px</span>
+                            <input id="predictionNoisePixels" type="range" min="0.0" max="8.0" step="0.1" value="1.5">
+                        </label>
+                        <label class="field range-field">
+                            <span>预瞄响应 <b id="predictionOutputSmoothingValue">0.20</b></span>
+                            <input id="predictionOutputSmoothing" type="range" min="0.02" max="1.00" step="0.01" value="0.20">
+                        </label>
+                    </div>
+                    <div class="filter-fields" id="predictionLinearFields">
+                        <label class="field range-field">
+                            <span>速度响应 <b id="predictionSmoothingValue">0.12</b></span>
+                            <input id="predictionSmoothing" type="range" min="0.00" max="1.00" step="0.01" value="0.12">
+                        </label>
+                    </div>
+                    <div class="filter-fields" id="predictionServoFields">
+                        <label class="field range-field">
+                            <span>伺服强度 <b id="predictionServoGainValue">0.65</b></span>
+                            <input id="predictionServoGain" type="range" min="0.00" max="2.00" step="0.01" value="0.65">
+                        </label>
+                    </div>
+                    <div class="filter-fields" id="predictionArcFields">
+                        <label class="field range-field">
+                            <span>弧线响应 <b id="predictionAccelerationSmoothingValue">0.18</b></span>
+                            <input id="predictionAccelerationSmoothing" type="range" min="0.00" max="1.00" step="0.01" value="0.18">
+                        </label>
+                    </div>
+                    <div class="filter-fields" id="predictionAlphaBetaFields">
+                        <label class="field range-field">
+                            <span>Alpha <b id="predictionAlphaValue">0.45</b></span>
+                            <input id="predictionAlpha" type="range" min="0.00" max="1.00" step="0.01" value="0.45">
+                        </label>
+                        <label class="field range-field">
+                            <span>Beta <b id="predictionBetaValue">0.06</b></span>
+                            <input id="predictionBeta" type="range" min="0.00" max="1.00" step="0.01" value="0.06">
+                        </label>
+                    </div>
+                    <div class="filter-fields" id="predictionKalmanFields">
+                        <label class="field range-field">
+                            <span>测量噪声 R <b id="predictionKalmanMeasurementNoiseValue">34</b></span>
+                            <input id="predictionKalmanMeasurementNoise" type="range" min="0.1" max="200.0" step="0.1" value="34.0">
+                        </label>
+                        <label class="field range-field">
+                            <span>过程噪声 Q <b id="predictionKalmanProcessNoiseValue">72</b></span>
+                            <input id="predictionKalmanProcessNoise" type="range" min="0.1" max="1000.0" step="0.1" value="72.0">
+                        </label>
+                    </div>
+                    <label class="field range-field">
+                        <span>跳变重置 <b id="predictionResetPixelsValue">70</b> px</span>
+                        <input id="predictionResetPixels" type="range" min="20" max="240" step="5" value="70">
+                    </label>
+                </section>
+
+                <section class="panel-block human-slide-slot" id="humanSlideSlot" data-page="humanSlide">
+                    <div class="section-title">
+                        <h2>滑动轨迹</h2>
+                        <small id="humanSlideLabel">DIRECT</small>
+                    </div>
+                    <div class="hotkey-grid">
+                        <label class="field range-field">
+                            <span>最大分段 <b id="humanSlideMaxStepValue">50</b></span>
+                            <input id="humanSlideMaxStep" type="range" min="1" max="160" step="1" value="50">
+                        </label>
+                        <label class="field range-field">
+                            <span>随机抖动 <b id="humanSlideJitterValue">0.5</b></span>
+                            <input id="humanSlideJitter" type="range" min="0.0" max="5.0" step="0.1" value="0.5">
+                        </label>
+                    </div>
+                    <div class="hotkey-grid">
+                        <label class="field range-field">
+                            <span>最小延迟 <b id="humanSlideDelayMinValue">5</b> ms</span>
+                            <input id="humanSlideDelayMin" type="range" min="0" max="50" step="1" value="5">
+                        </label>
+                        <label class="field range-field">
+                            <span>最大延迟 <b id="humanSlideDelayMaxValue">20</b> ms</span>
+                            <input id="humanSlideDelayMax" type="range" min="0" max="50" step="1" value="20">
+                        </label>
+                    </div>
+                </section>
+
+                <section class="panel-block filter-slot" id="filterSlot" data-page="mouse">
+                    <div class="section-title">
+                        <h2>防抖</h2>
+                        <small id="filterLabel">NONE</small>
+                    </div>
+                    <label class="field">
+                        <span>算法</span>
+                        <select id="aimFilter">
+                            <option value="none" selected>关闭</option>
+                            <option value="pid">PID</option>
+                            <option value="oneeuro">1 Euro</option>
+                            <option value="pid_oneeuro">PID + 1 Euro</option>
+                        </select>
+                    </label>
+                    <div class="filter-actions">
+                        <button class="command compact" id="resetFilterBtn" type="button">恢复防抖默认</button>
+                    </div>
+                    <div class="filter-fields" id="pidFields">
+                        <label class="field range-field">
+                            <span>PID P <b id="pidKpValue">1.00</b></span>
+                            <input id="pidKp" type="range" min="0.00" max="3.00" step="0.05" value="1.00">
+                        </label>
+                        <label class="field range-field">
+                            <span>PID I <b id="pidKiValue">0.00</b></span>
+                            <input id="pidKi" type="range" min="0.00" max="1.00" step="0.01" value="0.00">
+                        </label>
+                        <label class="field range-field">
+                            <span>PID D <b id="pidKdValue">0.00</b></span>
+                            <input id="pidKd" type="range" min="0.00" max="1.00" step="0.01" value="0.00">
+                        </label>
+                        <label class="field range-field">
+                            <span>积分限幅 <b id="pidIntegralLimitValue">120</b></span>
+                            <input id="pidIntegralLimit" type="range" min="0" max="300" step="5" value="120">
+                        </label>
+                    </div>
+                    <div class="filter-fields" id="oneEuroFields">
+                        <label class="field range-field">
+                            <span>最小截止 <b id="oneEuroMinCutoffValue">1.00</b></span>
+                            <input id="oneEuroMinCutoff" type="range" min="0.10" max="10.00" step="0.10" value="1.00">
+                        </label>
+                        <label class="field range-field">
+                            <span>速度响应 <b id="oneEuroBetaValue">0.02</b></span>
+                            <input id="oneEuroBeta" type="range" min="0.00" max="2.00" step="0.01" value="0.02">
+                        </label>
+                        <label class="field range-field">
+                            <span>导数截止 <b id="oneEuroDCutoffValue">1.00</b></span>
+                            <input id="oneEuroDCutoff" type="range" min="0.10" max="10.00" step="0.10" value="1.00">
+                        </label>
+                    </div>
+                </section>
+
+                <section class="panel-block driver-slot" data-page="home mouse">
+                    <div class="section-title">
+                        <h2>输入后端</h2>
+                        <small id="inputBackendLabel">SendInput</small>
+                    </div>
+                    <label class="field">
+                        <span>后端</span>
+                        <select id="inputBackend">
+                            <option value="sendinput">SendInput</option>
+                            <option value="driver">驱动</option>
+                            <option value="dd">DD 驱动</option>
+                        </select>
+                    </label>
+                    <label class="field" id="driverDllField">
+                        <span>驱动 DLL 路径</span>
+                        <input id="driverDllPath" type="text" value="" placeholder="可留空自动识别 drivers\dd60300.dll" autocomplete="off">
+                    </label>
+                    <label class="field" id="driverTypeField">
+                        <span>驱动类型</span>
+                        <select id="driverType">
+                            <option value="0">自动检测</option>
+                            <option value="1" selected>强制 G HUB</option>
+                            <option value="2">强制 LGS</option>
+                            <option value="3">强制 Razer</option>
+                        </select>
+                    </label>
+                    <div class="driver-actions">
+                        <button class="command compact" id="testBackendBtn" type="button">测试后端</button>
+                    </div>
+                </section>
+
+                <section class="panel-block dependency-slot" id="dependencySlot" data-page="dependencies">
+                    <div class="section-title">
+                        <h2>依赖设置</h2>
+                        <small id="dependencySummary">CHECKING</small>
+                    </div>
+                    <div class="dependency-system" id="dependencySystem"></div>
+                    <div class="dependency-downloads" id="dependencyDownloads"></div>
+                    <div class="dependency-list" id="dependencyList"></div>
+                    <div class="dependency-guide">
+                        <h3>固定放置规则</h3>
+                        <p>配置里手动选择的路径优先；没有填写时，程序会按下面的位置自动查找。</p>
+                        <dl>
+                            <dt>后端程序</dt>
+                            <dd><code>backend\AIM_Helper_Backend.exe</code></dd>
+                            <dt>模型文件</dt>
+                            <dd><code>models\cs2yolomaax.onnx</code> 或 <code>backend\models\cs2yolomaax.onnx</code></dd>
+                            <dt>DD 驱动 DLL</dt>
+                            <dd><code>drivers\dd60300.dll</code> 或 <code>backend\dd60300.dll</code></dd>
+                            <dt>普通驱动 DLL</dt>
+                            <dd><code>drivers\DriverBridge.dll</code>、<code>driver_bridge.dll</code>、<code>driver.dll</code>、<code>mouse_driver.dll</code>、<code>logi_driver.dll</code></dd>
+                            <dt>后端运行 DLL</dt>
+                            <dd><code>backend\</code>、<code>runtime\</code>、<code>deps\onnxruntime\</code>、<code>deps\opencv\</code>、<code>deps\cuda\bin\</code>、<code>deps\tensorrt\bin\</code></dd>
+                        </dl>
+                        <h3>下载教程</h3>
+                        <p>先看上面的“本机配置”。如果使用 TensorRT/CUDA 后端，请保证电脑是 NVIDIA 显卡，并且显卡驱动支持你下载的 CUDA 12.x 版本。</p>
+                        <p>带“下载/继续”的项目会直接下载到程序目录的 <code>downloads\</code>。未完成文件会保留为 <code>.part</code>，下次点击同一按钮会继续下载。</p>
+                        <dl>
+                            <dt>ONNX Runtime</dt>
+                            <dd>在 GitHub Releases 下载 Windows x64 GPU 包，文件名通常类似 <code>onnxruntime-win-x64-gpu-*.zip</code>；CPU 后端用 <code>onnxruntime-win-x64-*.zip</code>。</dd>
+                            <dt>CUDA</dt>
+                            <dd>进入 CUDA Toolkit Archive，选择 Windows x86_64 的 CUDA 12.x；解压或安装后把 <code>bin</code> 目录配置进来。</dd>
+                            <dt>cuDNN</dt>
+                            <dd>下载 cuDNN 9.x for CUDA 12.x 的 Windows x86_64 包，把所有 <code>cudnn*.dll</code> 放在同一目录。</dd>
+                            <dt>TensorRT</dt>
+                            <dd>下载 TensorRT 10.x Windows x64 zip，选择匹配 CUDA 12.x 的版本；把 <code>lib</code> 或 <code>bin</code> 目录配置进来。</dd>
+                            <dt>OpenCV</dt>
+                            <dd>下载 Windows 版本后，选择包含 <code>opencv_world*.dll</code> 的目录。</dd>
+                            <dt>放置方式</dt>
+                            <dd>最省事是把下载到的 DLL 放进 <code>backend\</code>；也可以用每张缺失卡片里的“选择位置”单独指定目录。</dd>
+                        </dl>
+                    </div>
+                </section>
+            </aside>
+
+            <aside class="preview-panel" aria-label="预览">
+                <section class="panel-block preview-card" data-page="home">
+                    <div class="section-title">
+                        <h2>自瞄范围</h2>
+                        <small id="rangePreviewLabel">320 / 100</small>
+                    </div>
+                    <div class="range-preview" id="rangePreview">
+                        <span class="range-cross horizontal"></span>
+                        <span class="range-cross vertical"></span>
+                        <span class="range-circle" id="rangeCircle"></span>
+                        <span class="range-center"></span>
+                    </div>
+                    <div class="preview-metrics">
+                        <span>截图 <b id="rangeCropMetric">320</b></span>
+                        <span>半径 <b id="rangeRadiusMetric">100</b></span>
+                    </div>
+                </section>
+
+                <section class="panel-block preview-card" id="targetCard" data-page="home">
+                    <div class="section-title">
+                        <h2>自定义瞄准部位</h2>
+                        <small id="targetPreviewLabel">0.50 / 0.30</small>
+                    </div>
+                    <div class="target-editor">
+                        <div class="target-box" id="targetBox">
+                            <span class="target-box-line horizontal"></span>
+                            <span class="target-box-line vertical"></span>
+                            <span class="target-point" id="targetPoint"></span>
+                        </div>
+                        <div class="target-controls">
+                            <label class="field range-field">
+                                <span>X 位置 <b id="targetXValue">0.50</b></span>
+                                <input id="targetX" type="range" min="0.00" max="1.00" step="0.01" value="0.50">
+                            </label>
+                            <label class="field range-field">
+                                <span>Y 位置 <b id="targetYValue">0.30</b></span>
+                                <input id="targetY" type="range" min="0.00" max="1.00" step="0.01" value="0.30">
+                            </label>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="panel-block preview-card" id="aimPartPriorityCard" data-page="target">
+                    <div class="section-title">
+                        <h2>自动选择部位</h2>
+                        <small>LOCK PART</small>
+                    </div>
+                    <label class="field" id="aimPartPriorityField">
+                        <span>锁定部位</span>
+                        <select id="aimPartPriority">
+                            <option value="distance" selected>距离优先</option>
+                            <option value="head">头部优先</option>
+                            <option value="other">其他部位优先</option>
+                        </select>
+                    </label>
+                </section>
+            </aside>
+        </section>
+
+        <section class="log-panel" id="logPanel" aria-label="日志" hidden>
+            <div class="log-header">
+                <span>Event Stream</span>
+                <button class="small-command" id="clearLogBtn" type="button">Clear</button>
+            </div>
+            <ol id="eventLog"></ol>
+        </section>
+    </main>
+
+    <script src="app.js"></script>
+</body>
+</html>

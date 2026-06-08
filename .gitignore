@@ -1,0 +1,65 @@
+# 构建输出
+build/
+build*/
+out/
+x64/
+x86/
+Debug/
+Release/
+
+# .NET / WinForms 宿主输出
+host/bin/
+host/obj/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Visual Studio / CMake / Ninja
+.vs/
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+install_manifest.txt
+compile_commands.json
+*.ninja
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+
+# 运行状态
+runtime-config.json
+runtime-config.live
+downloads/
+engine_cache/
+*.log
+*.tmp
+*.part
+
+# WebView2 用户数据
+*.WebView2/
+OfflineYoloConsole.Host.exe.WebView2/
+
+# 模型和外部依赖
+models/
+backend/
+deps/
+runtime/
+drivers/
+*.onnx
+*.engine
+*.plan
+*.dll
+*.lib
+*.exe
+*.pdb
+
+# 忽略二进制库，但保留源码头文件
+!driver/*.h
+!driver/*.hpp
+
+# 系统和编辑器临时文件
+Thumbs.db
+Desktop.ini
+.idea/
+.vscode/

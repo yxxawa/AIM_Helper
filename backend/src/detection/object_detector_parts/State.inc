@@ -1,0 +1,17 @@
+    Ort::Env env;
+    Ort::Session session;
+    Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+    Ort::RunOptions run_options{ nullptr };
+    std::string input_name;
+    std::string output_name;
+    std::vector<int64_t> input_shape;
+    int64_t input_height = 0;
+    int64_t input_width = 0;
+    cv::Mat resized_img;
+    cv::Mat canvas;
+    cv::Mat blob;
+    cv::Mat output_transposed;
+    std::vector<cv::Rect> boxes;
+    std::vector<float> confidences;
+    std::vector<int> class_ids;
+    std::vector<int> nms_indices;

@@ -32,7 +32,7 @@
 │  └─ DriverBridgeABI.h             # 可选驱动桥接 ABI 参考
 ├─ DEPENDENCIES.md                  # 依赖下载说明
 ├─ DRIVER_EXTENSION.md              # 驱动后端扩展说明
-└─ WEBVIEW_FRONTEND.md              # 前端和宿主桥接说明
+└─ backend/README.md                # 后端模块拆分说明
 ```
 
 ## 系统要求
@@ -133,10 +133,10 @@ host\bin\Release\net9.0-windows\AIM_Helper.Host.exe
 需要显式传入 OpenCV 和 ONNX Runtime 路径。示例：
 
 ```powershell
-$env:ONNXRUNTIME_DIR = "D:\deps\onnxruntime-win-x64-gpu-1.24.3"
+$env:ONNXRUNTIME_DIR = "<你的依赖目录>\onnxruntime-win-x64-gpu-1.24.3"
 
 cmake -S . -B build -G Ninja `
-  -DOpenCV_DIR="D:\deps\opencv\build" `
+  -DOpenCV_DIR="<你的依赖目录>\opencv\build" `
   -DONNXRUNTIME_DIR="$env:ONNXRUNTIME_DIR" `
   -DCMAKE_BUILD_TYPE=Release
 
@@ -147,8 +147,8 @@ cmake --build build
 
 ```powershell
 cmake -S . -B build `
-  -DOpenCV_DIR="D:\deps\opencv\build" `
-  -DONNXRUNTIME_DIR="D:\deps\onnxruntime-win-x64-gpu-1.24.3"
+  -DOpenCV_DIR="<你的依赖目录>\opencv\build" `
+  -DONNXRUNTIME_DIR="<你的依赖目录>\onnxruntime-win-x64-gpu-1.24.3"
 
 cmake --build build --config Release
 ```

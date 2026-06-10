@@ -2,10 +2,16 @@ const root = document.querySelector(".app-shell");
 const eventLog = document.querySelector("#eventLog");
 
 const defaults = {
-    configVersion: 20,
+    configVersion: 34,
     backend: "cpu",
     inputBackend: "dd",
     modelPath: "",
+    modelId: "",
+    modelName: "",
+    modelClasses: [],
+    modelInputWidth: 0,
+    modelInputHeight: 0,
+    trtCachePath: "",
     driverDllPath: "",
     driverType: 1,
     dependencyPaths: {},
@@ -26,52 +32,33 @@ const defaults = {
     oneEuroMinCutoff: 10.0,
     oneEuroBeta: 0.0,
     oneEuroDCutoff: 0.1,
-    enablePrediction: false,
-    predictionMode: "kalman",
-    predictionLeadMs: 20,
-    predictionSmoothing: 0.12,
-    predictionAccelerationSmoothing: 0.18,
-    predictionAlpha: 0.45,
-    predictionBeta: 0.06,
-    predictionKalmanMeasurementNoise: 34.0,
-    predictionKalmanProcessNoise: 72.0,
-    predictionMaxPixels: 60,
-    predictionResetPixels: 70,
-    predictionNoisePixels: 1.5,
-    predictionOutputSmoothing: 0.20,
-    predictionServoGain: 0.65,
-    enableDroneTracking: false,
-    droneTrackController: "px4",
-    droneTrackGain: 0.72,
-    droneTrackVelocityGain: 0.18,
-    droneTrackDamping: 0.10,
-    droneTrackSmoothing: 0.60,
-    droneTrackMaxMove: 90,
-    droneTrackDeadzone: 0.6,
-    droneTrackPositionGain: 0.90,
-    droneTrackVelocityDamping: 0.28,
-    droneTrackAccelLimit: 2600,
-    droneTrackVispLambda: 0.85,
-    droneTrackVispDamping: 0.22,
+    enableCrosshairColor: false,
+    crosshairColorR: 0,
+    crosshairColorG: 255,
+    crosshairColorB: 0,
+    crosshairColorTolerance: 42,
+    crosshairMinArea: 1,
+    crosshairMaxArea: 900,
+    crosshairSmoothing: 0.20,
     targetX: 0.5,
     targetY: 0.3,
     enableAutoAimPart: true,
+    targetEntityPriority: "distance",
     aimPartPriority: "distance",
     enemyCamp: "all",
     detectionPart: "all",
     maxMove: 60,
-    enableTrackingBoost: true,
-    trackingBoostThreshold: 4,
-    trackingBoostGain: 2.0,
-    trackingBoostMaxMove: 120,
     enableHumanSlide: false,
     humanSlideMaxStep: 50,
     humanSlideJitter: 0.5,
     humanSlideDelayMin: 5,
     humanSlideDelayMax: 20,
     enableAutoClick: false,
+    autoClickHoldMode: false,
     autoClickDelayMin: 0,
     autoClickDelayMax: 0,
+    autoClickHoldDelayMin: 0,
+    autoClickHoldDelayMax: 0,
     autoClickIntervalMin: 0,
     autoClickIntervalMax: 0,
     autoClickTolerance: 3.0,
@@ -83,8 +70,16 @@ const defaults = {
     enableMouseMove: true,
     enableHoldToAim: true,
     enableVisualization: true,
+    yoloFpsLimit: 200,
     enableConsoleStats: false,
-    boundedMovement: true
+    boundedMovement: true,
+    enableInstantSnap: false,
+    smoothSlideMaxStep: 18,
+    enableAntiSnap: false,
+    antiSnapMaxDelta: 90,
+    enableFallenTargetFilter: false,
+    enableSmallLockOnly: false,
+    smallLockRadius: 35
 };
 
 const state = {
@@ -99,6 +94,8 @@ const state = {
         items: []
     },
     downloadProgress: {},
+    modelHistory: [],
+    driverHistory: [],
     config: { ...defaults }
 };
 
@@ -124,6 +121,7 @@ const controls = {
     resetFilterBtn: $("#resetFilterBtn"),
     testBackendBtn: $("#testBackendBtn"),
     clearLogBtn: $("#clearLogBtn"),
+    helpTooltip: $("#helpTooltip"),
     logPanel: $("#logPanel"),
     runtimeState: $("#runtimeState"),
     driverState: $("#driverState"),
@@ -142,12 +140,28 @@ const controls = {
     dependencyList: $("#dependencyList"),
     aimHotkeySwitchLabel: $("#aimHotkeySwitchLabel"),
     humanSlideSwitchLabel: $("#humanSlideSwitchLabel"),
-    predictionSwitchLabel: $("#predictionSwitchLabel"),
-    droneTrackingSwitchLabel: $("#droneTrackingSwitchLabel"),
+    crosshairColorSwitchLabel: $("#crosshairColorSwitchLabel"),
     autoClickSwitchLabel: $("#autoClickSwitchLabel"),
+    antiSnapSwitchLabel: $("#antiSnapSwitchLabel"),
+    smallLockSwitchLabel: $("#smallLockSwitchLabel"),
+    fallenTargetFilterSwitchLabel: $("#fallenTargetFilterSwitchLabel"),
     modelPath: $("#modelPath"),
+    importModelBtn: $("#importModelBtn"),
+    modelHistoryBtn: $("#modelHistoryBtn"),
+    modelNameLabel: $("#modelNameLabel"),
+    modelPathLabel: $("#modelPathLabel"),
+    modelClassSummary: $("#modelClassSummary"),
+    modelClassList: $("#modelClassList"),
+    modalLayer: $("#modalLayer"),
+    modalTitle: $("#modalTitle"),
+    modalBody: $("#modalBody"),
+    modalActions: $("#modalActions"),
+    modalCloseBtn: $("#modalCloseBtn"),
     inputBackend: $("#inputBackend"),
     driverDllPath: $("#driverDllPath"),
+    driverDllPathLabel: $("#driverDllPathLabel"),
+    chooseDriverDllBtn: $("#chooseDriverDllBtn"),
+    driverHistoryBtn: $("#driverHistoryBtn"),
     driverType: $("#driverType"),
     aimHotkeyBtn: $("#aimHotkeyBtn"),
     aimHotkey2Btn: $("#aimHotkey2Btn"),
@@ -164,6 +178,11 @@ const controls = {
     autoClickDelayMax: $("#autoClickDelayMax"),
     autoClickDelayMinValue: $("#autoClickDelayMinValue"),
     autoClickDelayMaxValue: $("#autoClickDelayMaxValue"),
+    autoClickHoldDelayRange: $("#autoClickHoldDelayRange"),
+    autoClickHoldDelayMin: $("#autoClickHoldDelayMin"),
+    autoClickHoldDelayMax: $("#autoClickHoldDelayMax"),
+    autoClickHoldDelayMinValue: $("#autoClickHoldDelayMinValue"),
+    autoClickHoldDelayMaxValue: $("#autoClickHoldDelayMaxValue"),
     autoClickIntervalRange: $("#autoClickIntervalRange"),
     autoClickIntervalMin: $("#autoClickIntervalMin"),
     autoClickIntervalMax: $("#autoClickIntervalMax"),
@@ -171,6 +190,7 @@ const controls = {
     autoClickIntervalMaxValue: $("#autoClickIntervalMaxValue"),
     autoClickTolerance: $("#autoClickTolerance"),
     autoClickToleranceValue: $("#autoClickToleranceValue"),
+    autoClickMode: $("#autoClickMode"),
     enableAutoStop: $("#enableAutoStop"),
     autoStopMode: $("#autoStopMode"),
     autoStopModeField: $("#autoStopModeField"),
@@ -189,34 +209,16 @@ const controls = {
     oneEuroMinCutoff: $("#oneEuroMinCutoff"),
     oneEuroBeta: $("#oneEuroBeta"),
     oneEuroDCutoff: $("#oneEuroDCutoff"),
-    predictionSlot: $("#predictionSlot"),
-    predictionMode: $("#predictionMode"),
-    predictionLeadMs: $("#predictionLeadMs"),
-    predictionSmoothing: $("#predictionSmoothing"),
-    predictionAccelerationSmoothing: $("#predictionAccelerationSmoothing"),
-    predictionAlpha: $("#predictionAlpha"),
-    predictionBeta: $("#predictionBeta"),
-    predictionKalmanMeasurementNoise: $("#predictionKalmanMeasurementNoise"),
-    predictionKalmanProcessNoise: $("#predictionKalmanProcessNoise"),
-    predictionMaxPixels: $("#predictionMaxPixels"),
-    predictionResetPixels: $("#predictionResetPixels"),
-    predictionNoisePixels: $("#predictionNoisePixels"),
-    predictionOutputSmoothing: $("#predictionOutputSmoothing"),
-    predictionServoGain: $("#predictionServoGain"),
-    droneTrackingSlot: $("#droneTrackingSlot"),
-    droneTrackingLabel: $("#droneTrackingLabel"),
-    droneTrackController: $("#droneTrackController"),
-    droneTrackGain: $("#droneTrackGain"),
-    droneTrackVelocityGain: $("#droneTrackVelocityGain"),
-    droneTrackDamping: $("#droneTrackDamping"),
-    droneTrackSmoothing: $("#droneTrackSmoothing"),
-    droneTrackMaxMove: $("#droneTrackMaxMove"),
-    droneTrackDeadzone: $("#droneTrackDeadzone"),
-    droneTrackPositionGain: $("#droneTrackPositionGain"),
-    droneTrackVelocityDamping: $("#droneTrackVelocityDamping"),
-    droneTrackAccelLimit: $("#droneTrackAccelLimit"),
-    droneTrackVispLambda: $("#droneTrackVispLambda"),
-    droneTrackVispDamping: $("#droneTrackVispDamping"),
+    crosshairColorSlot: $("#crosshairColorSlot"),
+    crosshairColorLabel: $("#crosshairColorLabel"),
+    pickCrosshairColorBtn: $("#pickCrosshairColorBtn"),
+    crosshairColorR: $("#crosshairColorR"),
+    crosshairColorG: $("#crosshairColorG"),
+    crosshairColorB: $("#crosshairColorB"),
+    crosshairColorTolerance: $("#crosshairColorTolerance"),
+    crosshairMinArea: $("#crosshairMinArea"),
+    crosshairMaxArea: $("#crosshairMaxArea"),
+    crosshairSmoothing: $("#crosshairSmoothing"),
     cropSize: $("#cropSize"),
     lockRadius: $("#lockRadius"),
     confidence: $("#confidence"),
@@ -226,13 +228,15 @@ const controls = {
     deadzone: $("#deadzone"),
     targetX: $("#targetX"),
     targetY: $("#targetY"),
+    targetEntityPriority: $("#targetEntityPriority"),
     aimPartPriority: $("#aimPartPriority"),
     enemyCamp: $("#enemyCamp"),
     detectionPart: $("#detectionPart"),
     maxMove: $("#maxMove"),
-    trackingBoostThreshold: $("#trackingBoostThreshold"),
-    trackingBoostGain: $("#trackingBoostGain"),
-    trackingBoostMaxMove: $("#trackingBoostMaxMove"),
+    smoothSlideMaxStep: $("#smoothSlideMaxStep"),
+    antiSnapMaxDelta: $("#antiSnapMaxDelta"),
+    smallLockRadius: $("#smallLockRadius"),
+    yoloFpsLimit: $("#yoloFpsLimit"),
     cropValue: $("#cropValue"),
     radiusValue: $("#radiusValue"),
     confidenceValue: $("#confidenceValue"),
@@ -244,6 +248,11 @@ const controls = {
     targetCard: $("#targetCard"),
     aimPartPriorityCard: $("#aimPartPriorityCard"),
     maxMoveValue: $("#maxMoveValue"),
+    smoothSlideMaxStepValue: $("#smoothSlideMaxStepValue"),
+    antiSnapMaxDeltaValue: $("#antiSnapMaxDeltaValue"),
+    smallLockRadiusValue: $("#smallLockRadiusValue"),
+    yoloFpsLimitValue: $("#yoloFpsLimitValue"),
+    yoloFpsLimitLabel: $("#yoloFpsLimitLabel"),
     pidKpValue: $("#pidKpValue"),
     pidKiValue: $("#pidKiValue"),
     pidKdValue: $("#pidKdValue"),
@@ -251,30 +260,14 @@ const controls = {
     oneEuroMinCutoffValue: $("#oneEuroMinCutoffValue"),
     oneEuroBetaValue: $("#oneEuroBetaValue"),
     oneEuroDCutoffValue: $("#oneEuroDCutoffValue"),
-    predictionLabel: $("#predictionLabel"),
-    predictionLeadMsValue: $("#predictionLeadMsValue"),
-    predictionSmoothingValue: $("#predictionSmoothingValue"),
-    predictionAccelerationSmoothingValue: $("#predictionAccelerationSmoothingValue"),
-    predictionAlphaValue: $("#predictionAlphaValue"),
-    predictionBetaValue: $("#predictionBetaValue"),
-    predictionKalmanMeasurementNoiseValue: $("#predictionKalmanMeasurementNoiseValue"),
-    predictionKalmanProcessNoiseValue: $("#predictionKalmanProcessNoiseValue"),
-    predictionMaxPixelsValue: $("#predictionMaxPixelsValue"),
-    predictionResetPixelsValue: $("#predictionResetPixelsValue"),
-    predictionNoisePixelsValue: $("#predictionNoisePixelsValue"),
-    predictionOutputSmoothingValue: $("#predictionOutputSmoothingValue"),
-    predictionServoGainValue: $("#predictionServoGainValue"),
-    droneTrackGainValue: $("#droneTrackGainValue"),
-    droneTrackVelocityGainValue: $("#droneTrackVelocityGainValue"),
-    droneTrackDampingValue: $("#droneTrackDampingValue"),
-    droneTrackSmoothingValue: $("#droneTrackSmoothingValue"),
-    droneTrackMaxMoveValue: $("#droneTrackMaxMoveValue"),
-    droneTrackDeadzoneValue: $("#droneTrackDeadzoneValue"),
-    droneTrackPositionGainValue: $("#droneTrackPositionGainValue"),
-    droneTrackVelocityDampingValue: $("#droneTrackVelocityDampingValue"),
-    droneTrackAccelLimitValue: $("#droneTrackAccelLimitValue"),
-    droneTrackVispLambdaValue: $("#droneTrackVispLambdaValue"),
-    droneTrackVispDampingValue: $("#droneTrackVispDampingValue"),
+    crosshairColorSwatch: $("#crosshairColorSwatch"),
+    crosshairColorRValue: $("#crosshairColorRValue"),
+    crosshairColorGValue: $("#crosshairColorGValue"),
+    crosshairColorBValue: $("#crosshairColorBValue"),
+    crosshairColorToleranceValue: $("#crosshairColorToleranceValue"),
+    crosshairMinAreaValue: $("#crosshairMinAreaValue"),
+    crosshairMaxAreaValue: $("#crosshairMaxAreaValue"),
+    crosshairSmoothingValue: $("#crosshairSmoothingValue"),
     humanSlideMaxStepValue: $("#humanSlideMaxStepValue"),
     humanSlideJitterValue: $("#humanSlideJitterValue"),
     humanSlideDelayMinValue: $("#humanSlideDelayMinValue"),
@@ -285,25 +278,21 @@ const controls = {
     rangeRadiusMetric: $("#rangeRadiusMetric"),
     targetPoint: $("#targetPoint"),
     targetPreviewLabel: $("#targetPreviewLabel"),
-    enemyCampLabel: $("#enemyCampLabel"),
-    detectionPartLabel: $("#detectionPartLabel"),
-    trackingBoostFields: $("#trackingBoostFields"),
-    trackingBoostThresholdValue: $("#trackingBoostThresholdValue"),
-    trackingBoostGainValue: $("#trackingBoostGainValue"),
-    trackingBoostMaxMoveValue: $("#trackingBoostMaxMoveValue"),
     switches: {
         enableCapture: $("#enableCapture"),
         enableAutoAimPart: $("#enableAutoAimPart"),
         enableMouseMove: $("#enableMouseMove"),
-        enableTrackingBoost: $("#enableTrackingBoost"),
         enableHumanSlide: $("#enableHumanSlide"),
-        enablePrediction: $("#enablePrediction"),
-        enableDroneTracking: $("#enableDroneTracking"),
+        enableCrosshairColor: $("#enableCrosshairColor"),
         enableAutoClick: $("#enableAutoClick"),
         enableHoldToAim: $("#enableHoldToAim"),
         enableVisualization: $("#enableVisualization"),
         enableConsoleStats: $("#enableConsoleStats"),
-        boundedMovement: $("#boundedMovement")
+        boundedMovement: $("#boundedMovement"),
+        enableInstantSnap: $("#enableInstantSnap"),
+        enableAntiSnap: $("#enableAntiSnap"),
+        enableFallenTargetFilter: $("#enableFallenTargetFilter"),
+        enableSmallLockOnly: $("#enableSmallLockOnly")
     }
 };
 
@@ -367,8 +356,8 @@ const settingsPages = {
         hint: "公共配置 / 功能开关"
     },
     mouse: {
-        title: "鼠标与防抖",
-        hint: "热键、移动参数、输入后端"
+        title: "鼠标移动",
+        hint: "热键、移动参数、平滑步长、倒地残留过滤"
     },
     target: {
         title: "自动选择部位",
@@ -378,17 +367,25 @@ const settingsPages = {
         title: "仿人类滑动",
         hint: "分段、随机抖动、移动延迟"
     },
-    prediction: {
-        title: "预瞄",
-        hint: "线性、Alpha-Beta、卡尔曼参数"
-    },
-    droneTracking: {
-        title: "仿无人机追踪",
-        hint: "视觉伺服、速度前馈、单帧限幅"
+    crosshairColor: {
+        title: "准心图色",
+        hint: "用准心色块中心代替固定屏幕中心"
     },
     autoClick: {
         title: "自动扳机",
-        hint: "按下延迟、点击间隔、到位容差"
+        hint: "单点 / 长按、触发延迟、到位容差"
+    },
+    movementGuard: {
+        title: "防抽",
+        hint: "异常移动丢弃阈值"
+    },
+    smallLock: {
+        title: "仅小锁+压枪",
+        hint: "只在目标进入小锁半径后移动"
+    },
+    visualization: {
+        title: "显示 YOLO 窗口",
+        hint: "可视化窗口与帧率限制"
     },
     dependencies: {
         title: "依赖设置",
@@ -417,11 +414,9 @@ function hotkeyLabel(vk) {
 }
 
 function enemyCampTargetLabel(camp) {
-    if (camp === "ct") {
-        return "T-body / T-head";
-    }
-    if (camp === "t") {
-        return "CT-body / CT-head";
+    const ownCamp = normalizeEnemyCampSelection(camp);
+    if (ownCamp !== "all") {
+        return `排除 ${classCampLabel(ownCamp)}`;
     }
     return "ALL";
 }
@@ -454,8 +449,552 @@ function normalizeAimMode(mode) {
     return ["atan", "linear"].includes(mode) ? mode : defaults.aimMode;
 }
 
-function normalizeDroneTrackController(mode) {
-    return ["classic", "px4", "visp"].includes(mode) ? mode : defaults.droneTrackController;
+function normalizeTargetEntityPriority(mode) {
+    return ["distance", "head"].includes(mode) ? mode : defaults.targetEntityPriority;
+}
+
+function normalizeAimPartPriority(mode) {
+    return ["distance", "head", "other"].includes(mode) ? mode : defaults.aimPartPriority;
+}
+
+function normalizeClassRole(role) {
+    return ["head", "body", "other"].includes(role) ? role : "other";
+}
+
+function normalizeClassCamp(camp) {
+    const raw = String(camp || "")
+        .replace(/[;,:=|\r\n\t]+/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+    if (!raw || raw.toLowerCase() === "unknown") {
+        return "敌方";
+    }
+    const lowered = raw.toLowerCase();
+    if (lowered === "ct" || lowered === "t") {
+        return lowered;
+    }
+    return raw.slice(0, 24);
+}
+
+function normalizeEnemyCampSelection(camp) {
+    const raw = String(camp || "").trim();
+    if (!raw || raw.toLowerCase() === "all") {
+        return "all";
+    }
+    return normalizeClassCamp(raw);
+}
+
+function modelCampOptions() {
+    const seen = new Set();
+    const options = [{ value: "all", label: "ALL（全部）" }];
+    normalizeModelClasses(state.config.modelClasses).forEach((item) => {
+        const value = normalizeClassCamp(item.camp);
+        const key = value.toLowerCase();
+        if (!seen.has(key)) {
+            seen.add(key);
+            options.push({ value, label: classCampLabel(value) });
+        }
+    });
+    return options;
+}
+
+function renderEnemyCampOptions() {
+    const current = normalizeEnemyCampSelection(state.config.enemyCamp);
+    const options = modelCampOptions();
+    const hasCurrent = options.some((item) => item.value.toLowerCase() === current.toLowerCase());
+
+    controls.enemyCamp.replaceChildren();
+    options.forEach((item) => {
+        const option = document.createElement("option");
+        option.value = item.value;
+        option.textContent = item.label;
+        controls.enemyCamp.append(option);
+    });
+    controls.enemyCamp.value = hasCurrent ? current : "all";
+    state.config.enemyCamp = controls.enemyCamp.value || "all";
+}
+
+function normalizeModelClasses(classes) {
+    if (!Array.isArray(classes)) {
+        return [];
+    }
+    return classes
+        .map((item) => {
+            const id = Number(item?.id);
+            if (!Number.isInteger(id) || id < 0) {
+                return null;
+            }
+            const name = String(item?.name || `class-${id}`).trim() || `class-${id}`;
+            return {
+                id,
+                name,
+                role: normalizeClassRole(String(item?.role || "other").toLowerCase()),
+                camp: normalizeClassCamp(item?.camp),
+                enabled: item?.enabled !== false
+            };
+        })
+        .filter(Boolean)
+        .sort((a, b) => a.id - b.id);
+}
+
+function classRoleLabel(role) {
+    if (role === "head") return "头部";
+    if (role === "body") return "身体";
+    return "其他";
+}
+
+function classCampLabel(camp) {
+    if (camp === "ct") return "CT";
+    if (camp === "t") return "T";
+    return normalizeClassCamp(camp);
+}
+
+function fileNameFromPath(path) {
+    const text = String(path || "");
+    const parts = text.split(/[\\/]/).filter(Boolean);
+    return parts.at(-1) || "";
+}
+
+function shortPath(path) {
+    const text = String(path || "");
+    if (!text) {
+        return "留空时按固定位置自动查找";
+    }
+    if (text.length <= 72) {
+        return text;
+    }
+    return `...${text.slice(-69)}`;
+}
+
+function closeModal() {
+    controls.modalLayer.hidden = true;
+    controls.modalBody.replaceChildren();
+    controls.modalActions.replaceChildren();
+    state.activeModal = "";
+}
+
+function openModal(title, body, actions = []) {
+    controls.modalTitle.textContent = title;
+    controls.modalBody.replaceChildren(body);
+    controls.modalActions.replaceChildren();
+    actions.forEach((action) => controls.modalActions.append(action));
+    controls.modalLayer.hidden = false;
+    state.activeModal = title;
+}
+
+function modalButton(text, className, onClick) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = className || "command compact";
+    button.textContent = text;
+    button.addEventListener("click", onClick);
+    return button;
+}
+
+function showInfoModal(title, message) {
+    const body = document.createElement("div");
+    body.className = "modal-message";
+    body.textContent = message;
+    openModal(title, body, [
+        modalButton("确定", "command compact primary", closeModal)
+    ]);
+}
+
+function showNumberInputModal(label, initialValue, onCommit) {
+    const body = document.createElement("label");
+    body.className = "field modal-field";
+    const caption = document.createElement("span");
+    caption.textContent = label;
+    const input = document.createElement("input");
+    input.type = "number";
+    input.value = initialValue;
+    input.autocomplete = "off";
+    body.append(caption, input);
+
+    const commit = () => {
+        onCommit(input.value);
+        closeModal();
+    };
+    input.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+            event.preventDefault();
+            commit();
+        }
+    });
+
+    openModal(label, body, [
+        modalButton("取消", "command compact", closeModal),
+        modalButton("确定", "command compact primary", commit)
+    ]);
+    setTimeout(() => {
+        input.focus();
+        input.select();
+    }, 0);
+}
+
+function showTextInputModal(label, initialValue, onCommit, placeholder = "") {
+    const body = document.createElement("label");
+    body.className = "field modal-field";
+    const caption = document.createElement("span");
+    caption.textContent = label;
+    const input = document.createElement("input");
+    input.type = "text";
+    input.value = initialValue;
+    input.placeholder = placeholder;
+    input.autocomplete = "off";
+    input.maxLength = 24;
+    body.append(caption, input);
+
+    const commit = () => {
+        onCommit(input.value);
+        closeModal();
+    };
+    input.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+            event.preventDefault();
+            commit();
+        }
+    });
+
+    openModal(label, body, [
+        modalButton("取消", "command compact", closeModal),
+        modalButton("确定", "command compact primary", commit)
+    ]);
+    setTimeout(() => {
+        input.focus();
+        input.select();
+    }, 0);
+}
+
+function normalizeModelEntry(entry) {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+        return null;
+    }
+    const localPath = String(entry.localPath || entry.modelPath || "").trim();
+    const displayName = String(entry.displayName || entry.modelName || fileNameFromPath(localPath) || "未命名模型").trim();
+    return {
+        id: String(entry.id || entry.sha256 || localPath || displayName),
+        displayName,
+        originalPath: String(entry.originalPath || ""),
+        localPath,
+        importedAt: String(entry.importedAt || ""),
+        sha256: String(entry.sha256 || ""),
+        inputWidth: Math.max(0, Number(entry.inputWidth) || 0),
+        inputHeight: Math.max(0, Number(entry.inputHeight) || 0),
+        classes: normalizeModelClasses(entry.classes),
+        enemyCamp: normalizeEnemyCampSelection(entry.enemyCamp),
+        detectionPart: ["all", "head", "body"].includes(String(entry.detectionPart || "").toLowerCase())
+            ? String(entry.detectionPart).toLowerCase()
+            : "all"
+    };
+}
+
+function clampCropSize(value) {
+    const numeric = Number(value) || defaults.cropSize;
+    const snapped = Math.round(numeric / 32) * 32;
+    return Math.max(160, Math.min(960, snapped));
+}
+
+function autoCropSizeForModel(model) {
+    const width = Math.max(0, Number(model?.inputWidth) || 0);
+    const height = Math.max(0, Number(model?.inputHeight) || 0);
+    const target = Math.max(width, height);
+    if (target <= 0) {
+        return defaults.cropSize;
+    }
+    return clampCropSize(target);
+}
+
+function normalizeModelHistory(history) {
+    return (Array.isArray(history) ? history : [])
+        .map(normalizeModelEntry)
+        .filter(Boolean);
+}
+
+function normalizeDriverEntry(entry) {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+        return null;
+    }
+    const path = String(entry.path || entry.driverDllPath || "").trim();
+    if (!path) {
+        return null;
+    }
+    const displayName = String(entry.displayName || fileNameFromPath(path) || "驱动 DLL").trim();
+    return {
+        id: String(entry.id || entry.sha256 || path || displayName),
+        displayName,
+        path,
+        selectedAt: String(entry.selectedAt || ""),
+        sha256: String(entry.sha256 || ""),
+        architecture: String(entry.architecture || "unknown")
+    };
+}
+
+function normalizeDriverHistory(history) {
+    return (Array.isArray(history) ? history : [])
+        .map(normalizeDriverEntry)
+        .filter(Boolean);
+}
+
+function applyModelEntry(entry, { applyPreset = true } = {}) {
+    const model = normalizeModelEntry(entry);
+    if (!model) {
+        return;
+    }
+    state.config.modelId = model.id;
+    state.config.modelName = model.displayName;
+    state.config.modelPath = model.localPath;
+    state.config.modelClasses = normalizeModelClasses(model.classes);
+    state.config.modelInputWidth = Math.max(0, Number(model.inputWidth) || 0);
+    state.config.modelInputHeight = Math.max(0, Number(model.inputHeight) || 0);
+    state.config.trtCachePath = "";
+    state.config.dependencyPaths = {
+        ...(state.config.dependencyPaths || {}),
+        modelFile: model.localPath
+    };
+    const autoCrop = autoCropSizeForModel(model);
+    if (autoCrop > 0) {
+        state.config.cropSize = autoCrop;
+    }
+    if (applyPreset) {
+        state.config.enemyCamp = model.enemyCamp;
+        state.config.detectionPart = model.detectionPart;
+    }
+    syncUiFromConfig();
+    saveConfig({ notifyHost: false });
+    bridge.send("ui:updateConfig", state.config);
+    requestDependencyCheck();
+}
+
+function saveModelPreset() {
+    if (!state.config.modelId) {
+        return;
+    }
+    bridge.send("ui:saveModelPreset", {
+        id: state.config.modelId,
+        classes: state.config.modelClasses,
+        enemyCamp: state.config.enemyCamp,
+        detectionPart: state.config.detectionPart
+    });
+}
+
+function requestModelHistory() {
+    bridge.send("ui:getModelHistory", {});
+}
+
+function importModel() {
+    syncConfigFromUi();
+    saveConfig({ notifyHost: false });
+    bridge.send("ui:importModel", state.config);
+}
+
+function requestDriverHistory() {
+    bridge.send("ui:getDriverHistory", {});
+}
+
+function chooseDriverDll() {
+    syncConfigFromUi();
+    saveConfig({ notifyHost: false });
+    bridge.send("ui:chooseDriverDll", state.config);
+}
+
+function updateDriverHistory(payload) {
+    const history = payload && typeof payload === "object" ? payload.history : payload;
+    state.driverHistory = normalizeDriverHistory(history);
+}
+
+function applyDriverEntry(entry) {
+    const driver = normalizeDriverEntry(entry);
+    if (!driver) {
+        return;
+    }
+    state.config.driverDllPath = driver.path;
+    state.config.dependencyPaths = {
+        ...(state.config.dependencyPaths || {}),
+        driverDll: driver.path
+    };
+    syncUiFromConfig();
+    saveConfig({ notifyHost: false });
+    bridge.send("ui:updateConfig", state.config);
+    requestDependencyCheck();
+    logEvent(`driver dll selected: ${driver.displayName}`);
+}
+
+function modelClassSummaryText(classes) {
+    if (!classes.length) {
+        return "ALL";
+    }
+    const enabled = classes.filter((item) => item.enabled !== false);
+    if (enabled.length === classes.length) {
+        return `ALL ${classes.length}`;
+    }
+    if (enabled.length === 0) {
+        return "NONE";
+    }
+    return `${enabled.length}/${classes.length}`;
+}
+
+function renderModelClassList() {
+    controls.modelClassList.replaceChildren();
+    const classes = normalizeModelClasses(state.config.modelClasses);
+    controls.modelClassSummary.textContent = modelClassSummaryText(classes);
+    if (classes.length === 0) {
+        const empty = document.createElement("div");
+        empty.className = "model-class-empty";
+        empty.textContent = "未读取到类别映射时默认不过滤类别。";
+        controls.modelClassList.append(empty);
+        return;
+    }
+
+    classes.forEach((item) => {
+        const row = document.createElement("article");
+        row.className = "model-class-item";
+        row.dataset.classId = String(item.id);
+
+        const enabled = document.createElement("input");
+        enabled.type = "checkbox";
+        enabled.checked = item.enabled !== false;
+        enabled.dataset.modelClassEnabled = String(item.id);
+
+        const info = document.createElement("div");
+        info.className = "model-class-info";
+        const title = document.createElement("strong");
+        title.textContent = `${item.id} · ${item.name}`;
+        const meta = document.createElement("small");
+        meta.textContent = `${classCampLabel(item.camp)} / ${classRoleLabel(item.role)}`;
+        info.append(title, meta);
+
+        const metaControls = document.createElement("div");
+        metaControls.className = "model-class-meta";
+
+        const camp = document.createElement("button");
+        camp.type = "button";
+        camp.className = "model-class-camp-button";
+        camp.dataset.modelClassCampButton = String(item.id);
+        camp.textContent = classCampLabel(item.camp);
+        camp.title = "点击编辑阵营名称";
+
+        const role = document.createElement("select");
+        role.dataset.modelClassRole = String(item.id);
+        [
+            ["other", "其他"],
+            ["head", "头部"],
+            ["body", "身体"]
+        ].forEach(([value, label]) => {
+            const option = document.createElement("option");
+            option.value = value;
+            option.textContent = label;
+            role.append(option);
+        });
+        role.value = item.role;
+
+        metaControls.append(camp, role);
+        row.append(enabled, info, metaControls);
+        controls.modelClassList.append(row);
+    });
+}
+
+function renderModelCard() {
+    const name = state.config.modelName || fileNameFromPath(state.config.modelPath) || "未导入模型";
+    const inputWidth = Number(state.config.modelInputWidth) || 0;
+    const inputHeight = Number(state.config.modelInputHeight) || 0;
+    const inputText = inputWidth > 0 && inputHeight > 0 ? ` · 输入 ${inputWidth}x${inputHeight}` : "";
+    controls.modelNameLabel.textContent = name;
+    controls.modelPathLabel.textContent = `${shortPath(state.config.modelPath)}${inputText}`;
+    controls.modelPathLabel.title = state.config.modelPath || "";
+    renderEnemyCampOptions();
+    renderModelClassList();
+}
+
+function renderDriverPathSummary() {
+    const path = String(state.config.driverDllPath || "").trim();
+    controls.driverDllPathLabel.textContent = path ? shortPath(path) : "留空时自动识别 drivers 目录";
+    controls.driverDllPathLabel.title = path || "留空时自动识别 drivers 目录";
+}
+
+function openModelHistoryModal() {
+    const body = document.createElement("div");
+    body.className = "model-history-list";
+    const history = normalizeModelHistory(state.modelHistory);
+    if (history.length === 0) {
+        const empty = document.createElement("div");
+        empty.className = "modal-message";
+        empty.textContent = "还没有导入过模型。点击“导入模型”后会自动复制到 models 目录，并在这里显示历史记录。";
+        body.append(empty);
+    } else {
+        history.forEach((entry) => {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = "model-history-item";
+            button.dataset.modelId = entry.id;
+            const copy = document.createElement("span");
+            const name = document.createElement("strong");
+            name.textContent = entry.displayName;
+            const path = document.createElement("small");
+            path.textContent = shortPath(entry.localPath);
+            copy.append(name, path);
+            const meta = document.createElement("b");
+            const inputText = entry.inputWidth > 0 && entry.inputHeight > 0
+                ? ` · ${entry.inputWidth}x${entry.inputHeight}`
+                : "";
+            meta.textContent = `${entry.classes.length || "ALL"} 类${inputText} · ${entry.importedAt || "未知时间"}`;
+            button.append(copy, meta);
+            button.addEventListener("click", () => {
+                bridge.send("ui:selectModelHistory", { id: entry.id });
+                closeModal();
+            });
+            body.append(button);
+        });
+    }
+
+    openModal("模型历史", body, [
+        modalButton("关闭", "command compact", closeModal),
+        modalButton("刷新", "command compact primary", () => {
+            requestModelHistory();
+            openModelHistoryModal();
+        })
+    ]);
+}
+
+function openDriverHistoryModal() {
+    const body = document.createElement("div");
+    body.className = "model-history-list";
+    const history = normalizeDriverHistory(state.driverHistory);
+    if (history.length === 0) {
+        const empty = document.createElement("div");
+        empty.className = "modal-message";
+        empty.textContent = "还没有选择过驱动 DLL。点击“选择文件”后会自动保存到历史记录。";
+        body.append(empty);
+    } else {
+        history.forEach((entry) => {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = "model-history-item";
+            button.dataset.driverId = entry.id;
+            const copy = document.createElement("span");
+            const name = document.createElement("strong");
+            name.textContent = entry.displayName;
+            const path = document.createElement("small");
+            path.textContent = shortPath(entry.path);
+            copy.append(name, path);
+            const meta = document.createElement("b");
+            meta.textContent = `${entry.architecture || "unknown"} · ${entry.selectedAt || "未知时间"}`;
+            button.append(copy, meta);
+            button.addEventListener("click", () => {
+                bridge.send("ui:selectDriverHistory", { id: entry.id });
+                closeModal();
+            });
+            body.append(button);
+        });
+    }
+
+    openModal("驱动历史", body, [
+        modalButton("关闭", "command compact", closeModal),
+        modalButton("刷新", "command compact primary", () => {
+            requestDriverHistory();
+            openDriverHistoryModal();
+        })
+    ]);
 }
 
 function sanitizeConfig(config) {
@@ -464,24 +1003,44 @@ function sanitizeConfig(config) {
     if (incomingVersion < defaults.configVersion && merged.modelPath === "cs2yolomaax.onnx") {
         merged.modelPath = "";
     }
-    if (incomingVersion < 19) {
-        merged.droneTrackGain = defaults.droneTrackGain;
-        merged.droneTrackVelocityGain = defaults.droneTrackVelocityGain;
-        merged.droneTrackDamping = defaults.droneTrackDamping;
-        merged.droneTrackSmoothing = defaults.droneTrackSmoothing;
-        merged.droneTrackMaxMove = defaults.droneTrackMaxMove;
-        merged.droneTrackDeadzone = defaults.droneTrackDeadzone;
+    if (incomingVersion < 21) {
+        merged.enableCrosshairColor = defaults.enableCrosshairColor;
+        merged.crosshairColorR = defaults.crosshairColorR;
+        merged.crosshairColorG = defaults.crosshairColorG;
+        merged.crosshairColorB = defaults.crosshairColorB;
+        merged.crosshairColorTolerance = defaults.crosshairColorTolerance;
+        merged.crosshairMinArea = defaults.crosshairMinArea;
+        merged.crosshairMaxArea = defaults.crosshairMaxArea;
+        merged.crosshairSmoothing = defaults.crosshairSmoothing;
     }
-    if (incomingVersion < 20) {
-        merged.droneTrackController = defaults.droneTrackController;
-        merged.droneTrackPositionGain = defaults.droneTrackPositionGain;
-        merged.droneTrackVelocityDamping = defaults.droneTrackVelocityDamping;
-        merged.droneTrackAccelLimit = defaults.droneTrackAccelLimit;
-        merged.droneTrackVispLambda = defaults.droneTrackVispLambda;
-        merged.droneTrackVispDamping = defaults.droneTrackVispDamping;
+    if (incomingVersion < 24) {
+        merged.autoClickHoldMode = defaults.autoClickHoldMode;
     }
+    if (incomingVersion < 27) {
+        merged.autoClickHoldDelayMin = defaults.autoClickHoldDelayMin;
+        merged.autoClickHoldDelayMax = defaults.autoClickHoldDelayMax;
+    }
+    if (incomingVersion < 31 && Number(merged.yoloFpsLimit) === 60) {
+        merged.yoloFpsLimit = defaults.yoloFpsLimit;
+    }
+    if (merged.aimFilter === "pid_oneeuro") {
+        merged.aimFilter = "pid";
+    }
+    merged.modelId = String(merged.modelId || "");
+    merged.modelName = String(merged.modelName || "");
+    merged.modelPath = String(merged.modelPath || "");
+    merged.modelInputWidth = Math.max(0, Number(merged.modelInputWidth) || 0);
+    merged.modelInputHeight = Math.max(0, Number(merged.modelInputHeight) || 0);
+    merged.trtCachePath = String(merged.trtCachePath || "");
+    merged.modelClasses = normalizeModelClasses(merged.modelClasses);
+    merged.cropSize = clampCropSize(merged.cropSize);
+    merged.yoloFpsLimit = Math.max(0, Math.min(300, Number(merged.yoloFpsLimit) || defaults.yoloFpsLimit));
+    merged.smoothSlideMaxStep = Math.max(1, Math.min(120, Number(merged.smoothSlideMaxStep) || defaults.smoothSlideMaxStep));
+    merged.enableCapture = true;
+    merged.enableHoldToAim = true;
     merged.aimMode = normalizeAimMode(merged.aimMode);
-    merged.droneTrackController = normalizeDroneTrackController(merged.droneTrackController);
+    merged.targetEntityPriority = normalizeTargetEntityPriority(merged.targetEntityPriority);
+    merged.aimPartPriority = normalizeAimPartPriority(merged.aimPartPriority);
     merged.autoStopMode = normalizeAutoStopMode(merged.autoStopMode);
     merged.dependencyPaths = {
         ...(defaults.dependencyPaths || {}),
@@ -511,30 +1070,46 @@ function updateLogVisibility() {
     controls.logPanel.hidden = !state.config.enableConsoleStats || state.view !== "home";
 }
 
-function openSettingsPage(page) {
-    setView(page);
+let helpTimer = null;
+
+function hideHelpTooltip() {
+    if (helpTimer) {
+        clearTimeout(helpTimer);
+        helpTimer = null;
+    }
+    controls.helpTooltip.hidden = true;
 }
 
-function predictionModeLabel(mode) {
-    if (mode === "arc") {
-        return "ARC";
+function showHelpTooltip(target) {
+    const text = target?.dataset?.help || "";
+    if (!text) {
+        hideHelpTooltip();
+        return;
     }
-    if (mode === "hybrid") {
-        return "HYBRID";
-    }
-    if (mode === "adaptive") {
-        return "ADAPTIVE";
-    }
-    if (mode === "servo") {
-        return "SERVO";
-    }
-    if (mode === "alphabeta") {
-        return "ALPHA-BETA";
-    }
-    if (mode === "kalman") {
-        return "KALMAN";
-    }
-    return "LINEAR";
+    const rect = target.getBoundingClientRect();
+    controls.helpTooltip.textContent = text;
+    controls.helpTooltip.hidden = false;
+
+    const tooltipRect = controls.helpTooltip.getBoundingClientRect();
+    const margin = 10;
+    const left = Math.min(
+        window.innerWidth - tooltipRect.width - margin,
+        Math.max(margin, rect.left + rect.width / 2 - tooltipRect.width / 2)
+    );
+    const top = rect.bottom + tooltipRect.height + margin > window.innerHeight
+        ? Math.max(margin, rect.top - tooltipRect.height - margin)
+        : rect.bottom + margin;
+    controls.helpTooltip.style.left = `${left}px`;
+    controls.helpTooltip.style.top = `${top}px`;
+}
+
+function scheduleHelpTooltip(target) {
+    hideHelpTooltip();
+    helpTimer = window.setTimeout(() => showHelpTooltip(target), 520);
+}
+
+function openSettingsPage(page) {
+    setView(page);
 }
 
 function keyboardEventToVk(event) {
@@ -1160,34 +1735,30 @@ function updateDualRangeFill(minInput, maxInput) {
 
 function editRangeEndpoint(minInput, maxInput, side, label) {
     const target = side === "max" ? maxInput : minInput;
-    const raw = window.prompt(label, target.value);
-    if (raw === null) {
-        return;
-    }
-    const value = raw.trim().replace(",", ".");
-    const numeric = Number(value);
-    if (!Number.isFinite(numeric)) {
-        logEvent("invalid range value");
-        return;
-    }
-    target.value = formatForInput(target, clampNumber(numeric, Number(target.min), Number(target.max), Number(target.value)));
-    normalizeRangePair(minInput, maxInput, side);
-    pushConfigUpdate();
+    showNumberInputModal(label, target.value, (raw) => {
+        const value = String(raw || "").trim().replace(",", ".");
+        const numeric = Number(value);
+        if (!Number.isFinite(numeric)) {
+            logEvent("invalid range value");
+            return;
+        }
+        target.value = formatForInput(target, clampNumber(numeric, Number(target.min), Number(target.max), Number(target.value)));
+        normalizeRangePair(minInput, maxInput, side);
+        pushConfigUpdate();
+    });
 }
 
 function editSingleRangeValue(input, label) {
-    const raw = window.prompt(label, input.value);
-    if (raw === null) {
-        return;
-    }
-    const value = raw.trim().replace(",", ".");
-    const numeric = Number(value);
-    if (!Number.isFinite(numeric)) {
-        logEvent("invalid numeric value");
-        return;
-    }
-    input.value = formatForInput(input, clampNumber(numeric, Number(input.min), Number(input.max), Number(input.value)));
-    pushConfigUpdate();
+    showNumberInputModal(label, input.value, (raw) => {
+        const value = String(raw || "").trim().replace(",", ".");
+        const numeric = Number(value);
+        if (!Number.isFinite(numeric)) {
+            logEvent("invalid numeric value");
+            return;
+        }
+        input.value = formatForInput(input, clampNumber(numeric, Number(input.min), Number(input.max), Number(input.value)));
+        pushConfigUpdate();
+    });
 }
 
 function bindRangePairEvents(minInput, maxInput, minButton, maxButton, label) {
@@ -1221,9 +1792,12 @@ function syncUiFromConfig() {
     controls.humanSlideDelayMax.value = state.config.humanSlideDelayMax;
     controls.autoClickDelayMin.value = state.config.autoClickDelayMin;
     controls.autoClickDelayMax.value = state.config.autoClickDelayMax;
+    controls.autoClickHoldDelayMin.value = state.config.autoClickHoldDelayMin;
+    controls.autoClickHoldDelayMax.value = state.config.autoClickHoldDelayMax;
     controls.autoClickIntervalMin.value = state.config.autoClickIntervalMin;
     controls.autoClickIntervalMax.value = state.config.autoClickIntervalMax;
     controls.autoClickTolerance.value = state.config.autoClickTolerance;
+    controls.autoClickMode.value = state.config.autoClickHoldMode ? "hold" : "single";
     controls.enableAutoStop.checked = Boolean(state.config.enableAutoStop);
     controls.autoStopMode.value = normalizeAutoStopMode(state.config.autoStopMode);
     controls.autoStopHoldMs.value = state.config.autoStopHoldMs;
@@ -1236,33 +1810,13 @@ function syncUiFromConfig() {
     controls.oneEuroMinCutoff.value = state.config.oneEuroMinCutoff;
     controls.oneEuroBeta.value = state.config.oneEuroBeta;
     controls.oneEuroDCutoff.value = state.config.oneEuroDCutoff;
-    controls.predictionMode.value = ["linear", "arc", "hybrid", "adaptive", "servo", "alphabeta", "kalman"].includes(state.config.predictionMode)
-        ? state.config.predictionMode
-        : "linear";
-    controls.predictionLeadMs.value = state.config.predictionLeadMs;
-    controls.predictionSmoothing.value = state.config.predictionSmoothing;
-    controls.predictionAccelerationSmoothing.value = state.config.predictionAccelerationSmoothing;
-    controls.predictionAlpha.value = state.config.predictionAlpha;
-    controls.predictionBeta.value = state.config.predictionBeta;
-    controls.predictionKalmanMeasurementNoise.value = state.config.predictionKalmanMeasurementNoise;
-    controls.predictionKalmanProcessNoise.value = state.config.predictionKalmanProcessNoise;
-    controls.predictionMaxPixels.value = state.config.predictionMaxPixels;
-    controls.predictionResetPixels.value = state.config.predictionResetPixels;
-    controls.predictionNoisePixels.value = state.config.predictionNoisePixels;
-    controls.predictionOutputSmoothing.value = state.config.predictionOutputSmoothing;
-    controls.predictionServoGain.value = state.config.predictionServoGain;
-    controls.droneTrackController.value = normalizeDroneTrackController(state.config.droneTrackController);
-    controls.droneTrackGain.value = state.config.droneTrackGain;
-    controls.droneTrackVelocityGain.value = state.config.droneTrackVelocityGain;
-    controls.droneTrackDamping.value = state.config.droneTrackDamping;
-    controls.droneTrackSmoothing.value = state.config.droneTrackSmoothing;
-    controls.droneTrackMaxMove.value = state.config.droneTrackMaxMove;
-    controls.droneTrackDeadzone.value = state.config.droneTrackDeadzone;
-    controls.droneTrackPositionGain.value = state.config.droneTrackPositionGain;
-    controls.droneTrackVelocityDamping.value = state.config.droneTrackVelocityDamping;
-    controls.droneTrackAccelLimit.value = state.config.droneTrackAccelLimit;
-    controls.droneTrackVispLambda.value = state.config.droneTrackVispLambda;
-    controls.droneTrackVispDamping.value = state.config.droneTrackVispDamping;
+    controls.crosshairColorR.value = state.config.crosshairColorR;
+    controls.crosshairColorG.value = state.config.crosshairColorG;
+    controls.crosshairColorB.value = state.config.crosshairColorB;
+    controls.crosshairColorTolerance.value = state.config.crosshairColorTolerance;
+    controls.crosshairMinArea.value = state.config.crosshairMinArea;
+    controls.crosshairMaxArea.value = state.config.crosshairMaxArea;
+    controls.crosshairSmoothing.value = state.config.crosshairSmoothing;
     controls.cropSize.value = state.config.cropSize;
     controls.lockRadius.value = state.config.lockRadius;
     controls.confidence.value = state.config.confidence;
@@ -1272,13 +1826,15 @@ function syncUiFromConfig() {
     controls.deadzone.value = state.config.deadzone;
     controls.targetX.value = state.config.targetX;
     controls.targetY.value = state.config.targetY;
-    controls.aimPartPriority.value = state.config.aimPartPriority;
-    controls.enemyCamp.value = state.config.enemyCamp;
+    controls.targetEntityPriority.value = normalizeTargetEntityPriority(state.config.targetEntityPriority);
+    controls.aimPartPriority.value = normalizeAimPartPriority(state.config.aimPartPriority);
+    renderEnemyCampOptions();
     controls.detectionPart.value = state.config.detectionPart;
     controls.maxMove.value = state.config.maxMove;
-    controls.trackingBoostThreshold.value = state.config.trackingBoostThreshold;
-    controls.trackingBoostGain.value = state.config.trackingBoostGain;
-    controls.trackingBoostMaxMove.value = state.config.trackingBoostMaxMove;
+    controls.smoothSlideMaxStep.value = state.config.smoothSlideMaxStep;
+    controls.antiSnapMaxDelta.value = state.config.antiSnapMaxDelta;
+    controls.smallLockRadius.value = state.config.smallLockRadius;
+    controls.yoloFpsLimit.value = state.config.yoloFpsLimit;
 
     Object.entries(controls.switches).forEach(([key, input]) => {
         input.checked = Boolean(state.config[key]);
@@ -1289,6 +1845,8 @@ function syncUiFromConfig() {
         button.classList.toggle("active", button.dataset.backend === state.config.backend);
     });
 
+    renderModelCard();
+    renderDriverPathSummary();
     updateLabels();
 }
 
@@ -1320,6 +1878,7 @@ function enforceDetectionPartCompatibility() {
 
 function syncConfigFromUi() {
     state.config.modelPath = controls.modelPath.value.trim();
+    state.config.modelClasses = normalizeModelClasses(state.config.modelClasses);
     state.config.inputBackend = controls.inputBackend.value;
     state.config.driverDllPath = controls.driverDllPath.value.trim();
     state.config.driverType = Number(controls.driverType.value);
@@ -1340,10 +1899,14 @@ function syncConfigFromUi() {
     const clickDelayRange = normalizeRangePair(controls.autoClickDelayMin, controls.autoClickDelayMax);
     state.config.autoClickDelayMin = Math.round(clickDelayRange.minValue);
     state.config.autoClickDelayMax = Math.round(clickDelayRange.maxValue);
+    const clickHoldDelayRange = normalizeRangePair(controls.autoClickHoldDelayMin, controls.autoClickHoldDelayMax);
+    state.config.autoClickHoldDelayMin = Math.round(clickHoldDelayRange.minValue);
+    state.config.autoClickHoldDelayMax = Math.round(clickHoldDelayRange.maxValue);
     const clickIntervalRange = normalizeRangePair(controls.autoClickIntervalMin, controls.autoClickIntervalMax);
     state.config.autoClickIntervalMin = Math.round(clickIntervalRange.minValue);
     state.config.autoClickIntervalMax = Math.round(clickIntervalRange.maxValue);
     state.config.autoClickTolerance = Number(controls.autoClickTolerance.value);
+    state.config.autoClickHoldMode = controls.autoClickMode.value === "hold";
     state.config.enableAutoStop = Boolean(controls.enableAutoStop.checked);
     state.config.autoStopMode = normalizeAutoStopMode(controls.autoStopMode.value);
     state.config.autoStopHoldMs = Number(controls.autoStopHoldMs.value);
@@ -1356,32 +1919,23 @@ function syncConfigFromUi() {
     state.config.oneEuroMinCutoff = Number(controls.oneEuroMinCutoff.value);
     state.config.oneEuroBeta = Number(controls.oneEuroBeta.value);
     state.config.oneEuroDCutoff = Number(controls.oneEuroDCutoff.value);
-    state.config.predictionMode = controls.predictionMode.value;
-    state.config.predictionLeadMs = Number(controls.predictionLeadMs.value);
-    state.config.predictionSmoothing = Number(controls.predictionSmoothing.value);
-    state.config.predictionAccelerationSmoothing = Number(controls.predictionAccelerationSmoothing.value);
-    state.config.predictionAlpha = Number(controls.predictionAlpha.value);
-    state.config.predictionBeta = Number(controls.predictionBeta.value);
-    state.config.predictionKalmanMeasurementNoise = Number(controls.predictionKalmanMeasurementNoise.value);
-    state.config.predictionKalmanProcessNoise = Number(controls.predictionKalmanProcessNoise.value);
-    state.config.predictionMaxPixels = Number(controls.predictionMaxPixels.value);
-    state.config.predictionResetPixels = Number(controls.predictionResetPixels.value);
-    state.config.predictionNoisePixels = Number(controls.predictionNoisePixels.value);
-    state.config.predictionOutputSmoothing = Number(controls.predictionOutputSmoothing.value);
-    state.config.predictionServoGain = Number(controls.predictionServoGain.value);
-    state.config.droneTrackController = normalizeDroneTrackController(controls.droneTrackController.value);
-    state.config.droneTrackGain = Number(controls.droneTrackGain.value);
-    state.config.droneTrackVelocityGain = Number(controls.droneTrackVelocityGain.value);
-    state.config.droneTrackDamping = Number(controls.droneTrackDamping.value);
-    state.config.droneTrackSmoothing = Number(controls.droneTrackSmoothing.value);
-    state.config.droneTrackMaxMove = Number(controls.droneTrackMaxMove.value);
-    state.config.droneTrackDeadzone = Number(controls.droneTrackDeadzone.value);
-    state.config.droneTrackPositionGain = Number(controls.droneTrackPositionGain.value);
-    state.config.droneTrackVelocityDamping = Number(controls.droneTrackVelocityDamping.value);
-    state.config.droneTrackAccelLimit = Number(controls.droneTrackAccelLimit.value);
-    state.config.droneTrackVispLambda = Number(controls.droneTrackVispLambda.value);
-    state.config.droneTrackVispDamping = Number(controls.droneTrackVispDamping.value);
-    state.config.cropSize = Number(controls.cropSize.value);
+    state.config.crosshairColorR = Number(controls.crosshairColorR.value);
+    state.config.crosshairColorG = Number(controls.crosshairColorG.value);
+    state.config.crosshairColorB = Number(controls.crosshairColorB.value);
+    state.config.crosshairColorTolerance = Number(controls.crosshairColorTolerance.value);
+    state.config.crosshairMinArea = Number(controls.crosshairMinArea.value);
+    state.config.crosshairMaxArea = Number(controls.crosshairMaxArea.value);
+    if (state.config.crosshairMinArea > state.config.crosshairMaxArea) {
+        [state.config.crosshairMinArea, state.config.crosshairMaxArea] = [
+            state.config.crosshairMaxArea,
+            state.config.crosshairMinArea
+        ];
+        controls.crosshairMinArea.value = state.config.crosshairMinArea;
+        controls.crosshairMaxArea.value = state.config.crosshairMaxArea;
+    }
+    state.config.crosshairSmoothing = Number(controls.crosshairSmoothing.value);
+    state.config.cropSize = clampCropSize(controls.cropSize.value);
+    controls.cropSize.value = state.config.cropSize;
     state.config.lockRadius = Number(controls.lockRadius.value);
     state.config.confidence = Number(controls.confidence.value);
     state.config.smoothing = Number(controls.smoothing.value);
@@ -1390,13 +1944,15 @@ function syncConfigFromUi() {
     state.config.deadzone = Number(controls.deadzone.value);
     state.config.targetX = Number(controls.targetX.value);
     state.config.targetY = Number(controls.targetY.value);
-    state.config.aimPartPriority = controls.aimPartPriority.value;
-    state.config.enemyCamp = controls.enemyCamp.value;
+    state.config.targetEntityPriority = normalizeTargetEntityPriority(controls.targetEntityPriority.value);
+    state.config.aimPartPriority = normalizeAimPartPriority(controls.aimPartPriority.value);
+    state.config.enemyCamp = normalizeEnemyCampSelection(controls.enemyCamp.value);
     state.config.detectionPart = controls.detectionPart.value;
     state.config.maxMove = Number(controls.maxMove.value);
-    state.config.trackingBoostThreshold = Number(controls.trackingBoostThreshold.value);
-    state.config.trackingBoostGain = Number(controls.trackingBoostGain.value);
-    state.config.trackingBoostMaxMove = Number(controls.trackingBoostMaxMove.value);
+    state.config.smoothSlideMaxStep = Number(controls.smoothSlideMaxStep.value);
+    state.config.antiSnapMaxDelta = Number(controls.antiSnapMaxDelta.value);
+    state.config.smallLockRadius = Number(controls.smallLockRadius.value);
+    state.config.yoloFpsLimit = Math.max(0, Math.min(300, Number(controls.yoloFpsLimit.value) || 0));
     Object.entries(controls.switches).forEach(([key, input]) => {
         state.config[key] = input.checked;
     });
@@ -1412,16 +1968,16 @@ function updateLabels() {
     controls.deadzoneValue.textContent = state.config.deadzone.toFixed(1);
     controls.targetXValue.textContent = state.config.targetX.toFixed(2);
     controls.targetYValue.textContent = state.config.targetY.toFixed(2);
-    controls.enemyCampLabel.textContent = enemyCampTargetLabel(state.config.enemyCamp);
-    controls.detectionPartLabel.textContent = detectionPartTargetLabel(state.config.detectionPart);
     controls.maxMoveValue.textContent = state.config.maxMove;
-    controls.trackingBoostThresholdValue.textContent = state.config.trackingBoostThreshold.toFixed(0);
-    controls.trackingBoostGainValue.textContent = state.config.trackingBoostGain.toFixed(2);
-    controls.trackingBoostMaxMoveValue.textContent = state.config.trackingBoostMaxMove.toFixed(0);
-    controls.trackingBoostFields.hidden = !state.config.enableTrackingBoost;
-    controls.filterLabel.textContent = state.config.aimFilter === "pid_oneeuro"
-        ? "PID + 1 EURO"
-        : state.config.aimFilter === "oneeuro" ? "1 EURO" : state.config.aimFilter.toUpperCase();
+    controls.smoothSlideMaxStepValue.textContent = state.config.smoothSlideMaxStep.toFixed(0);
+    controls.smoothSlideMaxStep.disabled = Boolean(state.config.enableInstantSnap);
+    controls.antiSnapMaxDeltaValue.textContent = state.config.antiSnapMaxDelta.toFixed(0);
+    controls.smallLockRadiusValue.textContent = state.config.smallLockRadius.toFixed(0);
+    controls.yoloFpsLimitValue.textContent = state.config.yoloFpsLimit.toFixed(0);
+    controls.yoloFpsLimitLabel.textContent = state.config.yoloFpsLimit > 0
+        ? `${state.config.yoloFpsLimit.toFixed(0)} FPS`
+        : "不限";
+    controls.filterLabel.textContent = state.config.aimFilter === "oneeuro" ? "1 EURO" : state.config.aimFilter.toUpperCase();
     controls.pidKpValue.textContent = state.config.pidKp.toFixed(2);
     controls.pidKiValue.textContent = state.config.pidKi.toFixed(2);
     controls.pidKdValue.textContent = state.config.pidKd.toFixed(2);
@@ -1429,65 +1985,43 @@ function updateLabels() {
     controls.oneEuroMinCutoffValue.textContent = state.config.oneEuroMinCutoff.toFixed(2);
     controls.oneEuroBetaValue.textContent = state.config.oneEuroBeta.toFixed(2);
     controls.oneEuroDCutoffValue.textContent = state.config.oneEuroDCutoff.toFixed(2);
-    controls.predictionLeadMsValue.textContent = state.config.predictionLeadMs.toFixed(0);
-    controls.predictionSmoothingValue.textContent = state.config.predictionSmoothing.toFixed(2);
-    controls.predictionAlphaValue.textContent = state.config.predictionAlpha.toFixed(2);
-    controls.predictionBetaValue.textContent = state.config.predictionBeta.toFixed(2);
-    controls.predictionKalmanMeasurementNoiseValue.textContent = state.config.predictionKalmanMeasurementNoise.toFixed(1);
-    controls.predictionKalmanProcessNoiseValue.textContent = state.config.predictionKalmanProcessNoise.toFixed(1);
-    controls.predictionMaxPixelsValue.textContent = state.config.predictionMaxPixels.toFixed(0);
-    controls.predictionResetPixelsValue.textContent = state.config.predictionResetPixels.toFixed(0);
-    controls.predictionNoisePixelsValue.textContent = state.config.predictionNoisePixels.toFixed(1);
-    controls.predictionOutputSmoothingValue.textContent = state.config.predictionOutputSmoothing.toFixed(2);
-    controls.predictionServoGainValue.textContent = state.config.predictionServoGain.toFixed(2);
-    controls.predictionAccelerationSmoothingValue.textContent = state.config.predictionAccelerationSmoothing.toFixed(2);
-    controls.droneTrackGainValue.textContent = state.config.droneTrackGain.toFixed(2);
-    controls.droneTrackVelocityGainValue.textContent = state.config.droneTrackVelocityGain.toFixed(2);
-    controls.droneTrackDampingValue.textContent = state.config.droneTrackDamping.toFixed(2);
-    controls.droneTrackSmoothingValue.textContent = state.config.droneTrackSmoothing.toFixed(2);
-    controls.droneTrackMaxMoveValue.textContent = state.config.droneTrackMaxMove.toFixed(0);
-    controls.droneTrackDeadzoneValue.textContent = state.config.droneTrackDeadzone.toFixed(1);
-    controls.droneTrackPositionGainValue.textContent = state.config.droneTrackPositionGain.toFixed(2);
-    controls.droneTrackVelocityDampingValue.textContent = state.config.droneTrackVelocityDamping.toFixed(2);
-    controls.droneTrackAccelLimitValue.textContent = state.config.droneTrackAccelLimit.toFixed(0);
-    controls.droneTrackVispLambdaValue.textContent = state.config.droneTrackVispLambda.toFixed(2);
-    controls.droneTrackVispDampingValue.textContent = state.config.droneTrackVispDamping.toFixed(2);
-    const droneControllerText = state.config.droneTrackController === "visp"
-        ? "ViSP"
-        : state.config.droneTrackController === "classic" ? "CLASSIC" : "PX4";
-    controls.droneTrackingLabel.textContent = state.config.enableDroneTracking
-        ? `${droneControllerText} ${state.config.droneTrackGain.toFixed(2)} / ${state.config.droneTrackMaxMove.toFixed(0)}px`
+    controls.crosshairColorRValue.textContent = state.config.crosshairColorR.toFixed(0);
+    controls.crosshairColorGValue.textContent = state.config.crosshairColorG.toFixed(0);
+    controls.crosshairColorBValue.textContent = state.config.crosshairColorB.toFixed(0);
+    controls.crosshairColorToleranceValue.textContent = state.config.crosshairColorTolerance.toFixed(0);
+    controls.crosshairMinAreaValue.textContent = state.config.crosshairMinArea.toFixed(0);
+    controls.crosshairMaxAreaValue.textContent = state.config.crosshairMaxArea.toFixed(0);
+    controls.crosshairSmoothingValue.textContent = state.config.crosshairSmoothing.toFixed(2);
+    const crosshairColorText = `RGB ${state.config.crosshairColorR.toFixed(0)},${state.config.crosshairColorG.toFixed(0)},${state.config.crosshairColorB.toFixed(0)}`;
+    controls.crosshairColorSwatch.style.background = `rgb(${state.config.crosshairColorR}, ${state.config.crosshairColorG}, ${state.config.crosshairColorB})`;
+    controls.crosshairColorLabel.textContent = state.config.enableCrosshairColor
+        ? `${crosshairColorText} / ±${state.config.crosshairColorTolerance.toFixed(0)}`
         : "OFF";
-    controls.droneTrackingSwitchLabel.textContent = controls.droneTrackingLabel.textContent;
-    const predictionModeText = predictionModeLabel(state.config.predictionMode);
-    controls.predictionLabel.textContent = state.config.enablePrediction
-        ? `${predictionModeText} ${state.config.predictionLeadMs.toFixed(0)}ms`
-        : "OFF";
-    controls.predictionSwitchLabel.textContent = controls.predictionLabel.textContent;
-    controls.predictionSlot.dataset.predictionEnabled = String(state.config.enablePrediction);
-    controls.predictionSlot.dataset.predictionMode = ["linear", "arc", "hybrid", "adaptive", "servo", "alphabeta", "kalman"].includes(state.config.predictionMode)
-        ? state.config.predictionMode
-        : "linear";
-    controls.droneTrackingSlot.dataset.droneTrackingEnabled = String(state.config.enableDroneTracking);
+    controls.crosshairColorSwitchLabel.textContent = controls.crosshairColorLabel.textContent;
+    controls.crosshairColorSlot.dataset.crosshairColorEnabled = String(state.config.enableCrosshairColor);
     controls.humanSlideMaxStepValue.textContent = state.config.humanSlideMaxStep.toFixed(0);
     controls.humanSlideJitterValue.textContent = state.config.humanSlideJitter.toFixed(1);
     controls.humanSlideDelayMinValue.textContent = state.config.humanSlideDelayMin.toFixed(0);
     controls.humanSlideDelayMaxValue.textContent = state.config.humanSlideDelayMax.toFixed(0);
     controls.autoClickDelayMinValue.textContent = state.config.autoClickDelayMin.toFixed(0);
     controls.autoClickDelayMaxValue.textContent = state.config.autoClickDelayMax.toFixed(0);
+    controls.autoClickHoldDelayMinValue.textContent = state.config.autoClickHoldDelayMin.toFixed(0);
+    controls.autoClickHoldDelayMaxValue.textContent = state.config.autoClickHoldDelayMax.toFixed(0);
     controls.autoClickIntervalMinValue.textContent = state.config.autoClickIntervalMin.toFixed(0);
     controls.autoClickIntervalMaxValue.textContent = state.config.autoClickIntervalMax.toFixed(0);
     controls.autoClickToleranceValue.textContent = state.config.autoClickTolerance.toFixed(1);
     updateDualRangeFill(controls.autoClickDelayMin, controls.autoClickDelayMax);
+    updateDualRangeFill(controls.autoClickHoldDelayMin, controls.autoClickHoldDelayMax);
     updateDualRangeFill(controls.autoClickIntervalMin, controls.autoClickIntervalMax);
     controls.autoClickSlot.dataset.autoStopEnabled = String(state.config.enableAutoStop);
+    controls.autoClickSlot.dataset.triggerMode = state.config.autoClickHoldMode ? "hold" : "single";
     controls.autoStopModeField.hidden = !state.config.enableAutoStop;
     controls.autoStopHoldField.hidden = !state.config.enableAutoStop;
     controls.autoStopSettleField.hidden = !state.config.enableAutoStop;
     controls.autoStopHoldMsValue.textContent = state.config.autoStopHoldMs.toFixed(0);
     controls.autoStopSettleMsValue.textContent = state.config.autoStopSettleMs.toFixed(0);
-    const usesPid = state.config.aimFilter === "pid" || state.config.aimFilter === "pid_oneeuro";
-    const usesOneEuro = state.config.aimFilter === "oneeuro" || state.config.aimFilter === "pid_oneeuro";
+    const usesPid = state.config.aimFilter === "pid";
+    const usesOneEuro = state.config.aimFilter === "oneeuro";
     controls.filterSlot.dataset.pidVisible = String(usesPid);
     controls.filterSlot.dataset.oneEuroVisible = String(usesOneEuro);
     const radiusPercent = Math.min(100, Math.max(2, (state.config.lockRadius * 2 / state.config.cropSize) * 100));
@@ -1503,22 +2037,39 @@ function updateLabels() {
     controls.aimPartPriorityCard.dataset.autoPart = String(usesAutoAimPart);
     controls.targetX.disabled = usesAutoAimPart;
     controls.targetY.disabled = usesAutoAimPart;
-    controls.aimPartPriority.disabled = !usesAutoAimPart;
+    controls.targetEntityPriority.value = normalizeTargetEntityPriority(state.config.targetEntityPriority);
+    const entityHeadFirst = usesAutoAimPart && state.config.targetEntityPriority === "head";
+    controls.aimPartPriority.disabled = !usesAutoAimPart || entityHeadFirst;
+    controls.aimPartPriorityCard.dataset.entityHeadFirst = String(entityHeadFirst);
     controls.aimHotkeyBtn.textContent = pendingHotkeyField === "aimHotkey" ? "等待输入..." : hotkeyLabel(state.config.aimHotkey);
     controls.aimHotkey2Btn.textContent = pendingHotkeyField === "aimHotkey2" ? "等待输入..." : hotkeyLabel(state.config.aimHotkey2);
-    controls.aimHotkeySwitchLabel.textContent = `${hotkeyLabel(state.config.aimHotkey)} / ${hotkeyLabel(state.config.aimHotkey2)}`;
+    if (controls.aimHotkeySwitchLabel) {
+        controls.aimHotkeySwitchLabel.textContent = `${hotkeyLabel(state.config.aimHotkey)} / ${hotkeyLabel(state.config.aimHotkey2)}`;
+    }
     controls.humanSlideSwitchLabel.textContent = state.config.enableHumanSlide
         ? `${state.config.humanSlideMaxStep.toFixed(0)}px / ${state.config.humanSlideJitter.toFixed(1)}`
+        : "OFF";
+    controls.antiSnapSwitchLabel.textContent = state.config.enableAntiSnap
+        ? `>${state.config.antiSnapMaxDelta.toFixed(0)}px 丢弃`
+        : "OFF";
+    controls.smallLockSwitchLabel.textContent = state.config.enableSmallLockOnly
+        ? `${state.config.smallLockRadius.toFixed(0)}px`
+        : "OFF";
+    controls.fallenTargetFilterSwitchLabel.textContent = state.config.enableFallenTargetFilter
+        ? "ON"
         : "OFF";
     controls.humanSlideLabel.textContent = state.config.enableHumanSlide ? "HUMAN" : "DIRECT";
     const autoStopText = state.config.enableAutoStop
         ? `${autoStopModeLabel(state.config.autoStopMode)} ${state.config.autoStopHoldMs}-${state.config.autoStopSettleMs}ms`
         : "无急停";
+    const autoClickTimingText = state.config.autoClickHoldMode
+        ? `长按延迟 ${state.config.autoClickHoldDelayMin}-${state.config.autoClickHoldDelayMax}ms`
+        : `单点 ${state.config.autoClickDelayMin}-${state.config.autoClickDelayMax} / ${state.config.autoClickIntervalMin}-${state.config.autoClickIntervalMax}ms`;
     controls.autoClickSwitchLabel.textContent = state.config.enableAutoClick
-        ? `${state.config.autoClickDelayMin}-${state.config.autoClickDelayMax}ms / ${autoStopText}`
+        ? `${autoClickTimingText} / ${autoStopText}`
         : "OFF";
     controls.autoClickLabel.textContent = state.config.enableAutoClick
-        ? `${state.config.autoClickDelayMin}-${state.config.autoClickDelayMax} / ${state.config.autoClickIntervalMin}-${state.config.autoClickIntervalMax}ms · ${autoStopText}`
+        ? `${autoClickTimingText} · ${autoStopText}`
         : "OFF";
     controls.backendLabel.textContent = state.config.backend.toUpperCase();
     controls.inputBackendLabel.textContent = state.config.inputBackend === "dd"
@@ -1584,12 +2135,119 @@ function testInputBackend() {
     logEvent("input backend self-test requested");
 }
 
+function pickCrosshairColor() {
+    syncConfigFromUi();
+    saveConfig({ notifyHost: false });
+    bridge.send("ui:pickCrosshairColor", state.config);
+    logEvent("crosshair color pick requested");
+}
+
 function pushConfigUpdate() {
     syncConfigFromUi();
     updateLabels();
     localStorage.setItem("offline-yolo-switchboard", JSON.stringify(state.config));
     setDirty(false);
     bridge.send("ui:updateConfig", state.config);
+}
+
+function applyPickedCrosshairColor(payload) {
+    if (!payload || typeof payload !== "object") {
+        return;
+    }
+    const r = Number(payload.r);
+    const g = Number(payload.g);
+    const b = Number(payload.b);
+    if (![r, g, b].every(Number.isFinite)) {
+        logEvent("crosshair color pick failed");
+        return;
+    }
+    state.config.crosshairColorR = Math.max(0, Math.min(255, Math.round(r)));
+    state.config.crosshairColorG = Math.max(0, Math.min(255, Math.round(g)));
+    state.config.crosshairColorB = Math.max(0, Math.min(255, Math.round(b)));
+    state.config.enableCrosshairColor = true;
+    syncUiFromConfig();
+    pushConfigUpdate();
+    logEvent(`crosshair color picked rgb=${state.config.crosshairColorR},${state.config.crosshairColorG},${state.config.crosshairColorB}`);
+}
+
+function updateModelHistory(payload) {
+    const history = payload && typeof payload === "object" ? payload.history : payload;
+    state.modelHistory = normalizeModelHistory(history);
+}
+
+function applyImportedModel(payload) {
+    if (!payload || typeof payload !== "object") {
+        return;
+    }
+    updateModelHistory(payload.history ? payload : { history: state.modelHistory });
+    applyModelEntry(payload.entry || payload, { applyPreset: true });
+    logEvent(`model imported: ${state.config.modelName || fileNameFromPath(state.config.modelPath)}`);
+}
+
+function applySelectedModel(payload) {
+    const entry = normalizeModelEntry(payload);
+    if (!entry) {
+        return;
+    }
+    applyModelEntry(entry, { applyPreset: true });
+    logEvent(`model selected: ${entry.displayName}`);
+}
+
+function applySelectedDriver(payload) {
+    if (!payload || typeof payload !== "object") {
+        return;
+    }
+    updateDriverHistory(payload.history ? payload : { history: state.driverHistory });
+    applyDriverEntry(payload.entry || payload);
+}
+
+function updateModelClassFromControl(control) {
+    const id = Number(
+        control.dataset.modelClassEnabled
+        ?? control.dataset.modelClassRole
+    );
+    if (!Number.isInteger(id)) {
+        return false;
+    }
+    const classes = normalizeModelClasses(state.config.modelClasses);
+    const index = classes.findIndex((item) => item.id === id);
+    if (index < 0) {
+        return false;
+    }
+
+    if (control.dataset.modelClassEnabled !== undefined) {
+        classes[index].enabled = Boolean(control.checked);
+    }
+    if (control.dataset.modelClassRole !== undefined) {
+        classes[index].role = normalizeClassRole(control.value);
+    }
+
+    state.config.modelClasses = classes;
+    state.config.enemyCamp = normalizeEnemyCampSelection(state.config.enemyCamp);
+    renderModelCard();
+    pushConfigUpdate();
+    saveModelPreset();
+    return true;
+}
+
+function editModelClassCamp(button) {
+    const id = Number(button.dataset.modelClassCampButton);
+    if (!Number.isInteger(id)) {
+        return;
+    }
+    const classes = normalizeModelClasses(state.config.modelClasses);
+    const index = classes.findIndex((item) => item.id === id);
+    if (index < 0) {
+        return;
+    }
+    showTextInputModal("阵营名称", classes[index].camp, (raw) => {
+        classes[index].camp = normalizeClassCamp(raw);
+        state.config.modelClasses = classes;
+        state.config.enemyCamp = normalizeEnemyCampSelection(state.config.enemyCamp);
+        renderModelCard();
+        pushConfigUpdate();
+        saveModelPreset();
+    }, "敌方");
 }
 
 function logEvent(text) {
@@ -1630,6 +2288,33 @@ function handleHostMessage(event) {
     if (message.type === "host:dependencyPath") {
         commitDependencyPath(message.payload?.key, message.payload?.path);
     }
+    if (message.type === "host:crosshairColor") {
+        applyPickedCrosshairColor(message.payload);
+    }
+    if (message.type === "host:modelHistory") {
+        updateModelHistory(message.payload);
+        if (state.activeModal === "模型历史") {
+            openModelHistoryModal();
+        }
+    }
+    if (message.type === "host:driverHistory") {
+        updateDriverHistory(message.payload);
+        if (state.activeModal === "驱动历史") {
+            openDriverHistoryModal();
+        }
+    }
+    if (message.type === "host:modelImported") {
+        applyImportedModel(message.payload);
+    }
+    if (message.type === "host:modelSelected") {
+        applySelectedModel(message.payload);
+    }
+    if (message.type === "host:driverSelected") {
+        applySelectedDriver(message.payload);
+    }
+    if (message.type === "host:modelImportFailed") {
+        showInfoModal("导入失败", message.payload?.message || "模型导入失败");
+    }
     if (message.type === "host:log") {
         logEvent(message.payload.text || "host event");
     }
@@ -1647,6 +2332,40 @@ function bindEvents() {
     });
     controls.resetFilterBtn.addEventListener("click", resetFilterConfig);
     controls.testBackendBtn.addEventListener("click", testInputBackend);
+    controls.pickCrosshairColorBtn.addEventListener("click", pickCrosshairColor);
+    controls.importModelBtn.addEventListener("click", importModel);
+    controls.modelHistoryBtn.addEventListener("click", () => {
+        requestModelHistory();
+        openModelHistoryModal();
+    });
+    controls.chooseDriverDllBtn.addEventListener("click", chooseDriverDll);
+    controls.driverHistoryBtn.addEventListener("click", () => {
+        requestDriverHistory();
+        openDriverHistoryModal();
+    });
+    controls.modalCloseBtn.addEventListener("click", closeModal);
+    controls.modalLayer.addEventListener("click", (event) => {
+        if (event.target === controls.modalLayer) {
+            closeModal();
+        }
+    });
+    window.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && !controls.modalLayer.hidden) {
+            closeModal();
+        }
+    });
+    controls.modelClassList.addEventListener("change", (event) => {
+        const control = event.target.closest("[data-model-class-enabled], [data-model-class-role]");
+        if (control) {
+            updateModelClassFromControl(control);
+        }
+    });
+    controls.modelClassList.addEventListener("click", (event) => {
+        const button = event.target.closest("[data-model-class-camp-button]");
+        if (button) {
+            editModelClassCamp(button);
+        }
+    });
     controls.aimHotkeyBtn.addEventListener("click", (event) => {
         event.preventDefault();
         beginHotkeyCapture("aimHotkey");
@@ -1715,10 +2434,8 @@ function bindEvents() {
         controls.humanSlideJitter,
         controls.humanSlideDelayMin,
         controls.humanSlideDelayMax,
-        controls.trackingBoostThreshold,
-        controls.trackingBoostGain,
-        controls.trackingBoostMaxMove,
         controls.autoClickTolerance,
+        controls.autoClickMode,
         controls.enableAutoStop,
         controls.autoStopMode,
         controls.autoStopHoldMs,
@@ -1731,31 +2448,13 @@ function bindEvents() {
         controls.oneEuroMinCutoff,
         controls.oneEuroBeta,
         controls.oneEuroDCutoff,
-        controls.predictionMode,
-        controls.predictionLeadMs,
-        controls.predictionSmoothing,
-        controls.predictionAccelerationSmoothing,
-        controls.predictionAlpha,
-        controls.predictionBeta,
-        controls.predictionKalmanMeasurementNoise,
-        controls.predictionKalmanProcessNoise,
-        controls.predictionMaxPixels,
-        controls.predictionResetPixels,
-        controls.predictionNoisePixels,
-        controls.predictionOutputSmoothing,
-        controls.predictionServoGain,
-        controls.droneTrackController,
-        controls.droneTrackGain,
-        controls.droneTrackVelocityGain,
-        controls.droneTrackDamping,
-        controls.droneTrackSmoothing,
-        controls.droneTrackMaxMove,
-        controls.droneTrackDeadzone,
-        controls.droneTrackPositionGain,
-        controls.droneTrackVelocityDamping,
-        controls.droneTrackAccelLimit,
-        controls.droneTrackVispLambda,
-        controls.droneTrackVispDamping,
+        controls.crosshairColorR,
+        controls.crosshairColorG,
+        controls.crosshairColorB,
+        controls.crosshairColorTolerance,
+        controls.crosshairMinArea,
+        controls.crosshairMaxArea,
+        controls.crosshairSmoothing,
         controls.cropSize,
         controls.lockRadius,
         controls.confidence,
@@ -1765,14 +2464,23 @@ function bindEvents() {
         controls.deadzone,
         controls.targetX,
         controls.targetY,
+        controls.targetEntityPriority,
         controls.aimPartPriority,
         controls.enemyCamp,
         controls.detectionPart,
-        controls.maxMove
+        controls.maxMove,
+        controls.smoothSlideMaxStep,
+        controls.antiSnapMaxDelta,
+        controls.smallLockRadius,
+        controls.yoloFpsLimit
     ];
     liveControls.forEach((control) => {
         control.addEventListener("input", pushConfigUpdate);
         control.addEventListener("change", pushConfigUpdate);
+    });
+
+    [controls.enemyCamp, controls.detectionPart].forEach((control) => {
+        control.addEventListener("change", saveModelPreset);
     });
 
     bindRangePairEvents(
@@ -1780,7 +2488,14 @@ function bindEvents() {
         controls.autoClickDelayMax,
         controls.autoClickDelayMinValue,
         controls.autoClickDelayMaxValue,
-        "按下延迟"
+        "单点按下延迟"
+    );
+    bindRangePairEvents(
+        controls.autoClickHoldDelayMin,
+        controls.autoClickHoldDelayMax,
+        controls.autoClickHoldDelayMinValue,
+        controls.autoClickHoldDelayMaxValue,
+        "长按延迟"
     );
     bindRangePairEvents(
         controls.autoClickIntervalMin,
@@ -1838,6 +2553,18 @@ function bindEvents() {
             event.stopPropagation();
             openSettingsPage(button.dataset.openPage);
         });
+    });
+
+    $$("[data-help]").forEach((item) => {
+        item.addEventListener("mouseenter", () => scheduleHelpTooltip(item));
+        item.addEventListener("mousemove", () => {
+            if (!controls.helpTooltip.hidden) {
+                showHelpTooltip(item);
+            }
+        });
+        item.addEventListener("mouseleave", hideHelpTooltip);
+        item.addEventListener("focusin", () => scheduleHelpTooltip(item));
+        item.addEventListener("focusout", hideHelpTooltip);
     });
 
     $$("[data-backend]").forEach((button) => {

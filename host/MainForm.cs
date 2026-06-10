@@ -1,7 +1,10 @@
 using System.Diagnostics;
 using System.Drawing;
 using System.Globalization;
+using System.Security.Cryptography;
 using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
 using System.Windows.Forms;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
@@ -35,20 +38,28 @@ public sealed partial class MainForm : Form
     private bool backendReady;
     private bool hasSavedConfig;
     private volatile bool consoleStatsEnabled;
-    private bool tensorRtCacheNoticeShown;
+    private readonly HashSet<string> tensorRtCacheNoticeShown = new(StringComparer.OrdinalIgnoreCase);
     private string lastConfigJson = "{}";
     private static string RuntimeConfigJsonPath => Path.Combine(AppContext.BaseDirectory, "runtime-config.json");
     private static string LiveConfigPath => Path.Combine(AppContext.BaseDirectory, "runtime-config.live");
+    private static string ModelsDirectory => Path.Combine(AppContext.BaseDirectory, "models");
+    private static string ModelHistoryJsonPath => Path.Combine(ModelsDirectory, "model-history.json");
+    private static string DriversDirectory => Path.Combine(AppContext.BaseDirectory, "drivers");
+    private static string DriverHistoryJsonPath => Path.Combine(DriversDirectory, "driver-history.json");
     private static string RepoRoot => Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
     private static readonly string[] BackendExecutableNames = ["AIM_Helper_Backend.exe", "offline_yolo_mouse_assistant.exe"];
     private static readonly string[] DdDriverDllNames = ["dd60300.dll"];
     private static readonly string[] GenericDriverDllNames =
     [
+        "logi_driver_direct.dll",
         "DriverBridge.dll",
         "driver_bridge.dll",
         "driver.dll",
         "mouse_driver.dll",
         "logi_driver.dll",
+        "g.dll",
+        "razer.dll",
+        "lgmouse.dll",
         "dd60300.dll"
     ];
 
@@ -91,6 +102,29 @@ public sealed partial class MainForm : Form
         string architecture,
         string source,
         string[] notes);
+
+    private sealed record ModelClassInfo(int id, string name, string role, string camp, bool enabled);
+
+    private sealed record ModelHistoryEntry(
+        string id,
+        string displayName,
+        string originalPath,
+        string localPath,
+        string importedAt,
+        string sha256,
+        int inputWidth,
+        int inputHeight,
+        ModelClassInfo[] classes,
+        string enemyCamp,
+        string detectionPart);
+
+    private sealed record DriverHistoryEntry(
+        string id,
+        string displayName,
+        string path,
+        string selectedAt,
+        string sha256,
+        string architecture);
 
     public MainForm()
     {
@@ -229,6 +263,32 @@ public sealed partial class MainForm : Form
                     RememberConfig(document.RootElement);
                 }
                 PostDependencyStatus();
+                PostModelHistory();
+                PostDriverHistory();
+                break;
+            case "ui:importModel":
+                ImportModel(document.RootElement);
+                PostDependencyStatus();
+                break;
+            case "ui:getModelHistory":
+                PostModelHistory();
+                break;
+            case "ui:selectModelHistory":
+                SelectModelHistory(document.RootElement);
+                break;
+            case "ui:saveModelPreset":
+                SaveModelPreset(document.RootElement);
+                break;
+            case "ui:chooseDriverDll":
+                ChooseDriverDll(document.RootElement);
+                PostDependencyStatus();
+                break;
+            case "ui:getDriverHistory":
+                PostDriverHistory();
+                break;
+            case "ui:selectDriverHistory":
+                SelectDriverHistory(document.RootElement);
+                PostDependencyStatus();
                 break;
             case "ui:checkDependencies":
                 RememberConfig(document.RootElement);
@@ -256,6 +316,10 @@ public sealed partial class MainForm : Form
                 RememberConfig(document.RootElement);
                 TestInputBackend();
                 break;
+            case "ui:pickCrosshairColor":
+                RememberConfig(document.RootElement);
+                PickCrosshairColor();
+                break;
             case "ui:updateConfig":
                 RememberConfig(document.RootElement);
                 break;
@@ -277,6 +341,97 @@ public sealed partial class MainForm : Form
                 startInfo.ArgumentList.Add("--require-driver");
             }
         });
+    }
+
+    private void PickCrosshairColor()
+    {
+        try
+        {
+            using JsonDocument document = ParseConfig(lastConfigJson);
+            int cropSize = Math.Clamp(GetInt(document.RootElement, "cropSize", 320), 160, 960);
+            Color picked = PickCrosshairColorFromScreen(cropSize);
+            string payload = JsonSerializer.Serialize(new
+            {
+                r = picked.R,
+                g = picked.G,
+                b = picked.B
+            });
+            PostJson("host:crosshairColor", payload);
+            PostLog($"crosshair color picked: rgb={picked.R},{picked.G},{picked.B}");
+        }
+        catch (Exception ex)
+        {
+            PostLog($"crosshair color pick failed: {ex.Message}");
+            MessageBox.Show(this,
+                $"一键取色失败：{ex.Message}",
+                "准心图色",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Warning);
+        }
+    }
+
+    private static Color PickCrosshairColorFromScreen(int cropSize)
+    {
+        Rectangle screen = Screen.PrimaryScreen?.Bounds ?? new Rectangle(0, 0,
+            SystemInformation.PrimaryMonitorSize.Width,
+            SystemInformation.PrimaryMonitorSize.Height);
+        int width = Math.Min(cropSize, screen.Width);
+        int height = Math.Min(cropSize, screen.Height);
+        int left = screen.Left + (screen.Width - width) / 2;
+        int top = screen.Top + (screen.Height - height) / 2;
+
+        using Bitmap bitmap = new(width, height);
+        using (Graphics graphics = Graphics.FromImage(bitmap))
+        {
+            graphics.CopyFromScreen(left, top, 0, 0, new Size(width, height), CopyPixelOperation.SourceCopy);
+        }
+
+        Point center = new(width / 2, height / 2);
+        Color bestColor = bitmap.GetPixel(center.X, center.Y);
+        double bestScore = double.NegativeInfinity;
+        int maxRadius = Math.Min(Math.Min(width, height) / 2, 96);
+        for (int radius = 0; radius <= maxRadius; ++radius)
+        {
+            int minX = Math.Max(0, center.X - radius);
+            int maxX = Math.Min(width - 1, center.X + radius);
+            int minY = Math.Max(0, center.Y - radius);
+            int maxY = Math.Min(height - 1, center.Y + radius);
+            for (int y = minY; y <= maxY; ++y)
+            {
+                for (int x = minX; x <= maxX; ++x)
+                {
+                    if (radius > 0 && Math.Max(Math.Abs(x - center.X), Math.Abs(y - center.Y)) != radius)
+                    {
+                        continue;
+                    }
+
+                    Color color = bitmap.GetPixel(x, y);
+                    double maxChannel = Math.Max(color.R, Math.Max(color.G, color.B));
+                    double minChannel = Math.Min(color.R, Math.Min(color.G, color.B));
+                    double saturation = maxChannel - minChannel;
+                    double brightness = (color.R + color.G + color.B) / 3.0;
+                    if (brightness < 35.0 || saturation < 24.0)
+                    {
+                        continue;
+                    }
+
+                    double dist = Math.Sqrt((x - center.X) * (x - center.X) + (y - center.Y) * (y - center.Y));
+                    double score = saturation * 2.0 + maxChannel * 0.45 - dist * 3.2;
+                    if (score > bestScore)
+                    {
+                        bestScore = score;
+                        bestColor = color;
+                    }
+                }
+            }
+
+            if (bestScore > 220.0 && radius >= 8)
+            {
+                break;
+            }
+        }
+
+        return bestColor;
     }
 
     private void RunBackendSelfTest(string testName, Action<ProcessStartInfo> addArguments, int timeoutMs = 5000)
@@ -420,11 +575,6 @@ public sealed partial class MainForm : Form
 
     private void MaybeShowTensorRtCacheNotice(string workingDirectory, string configJson)
     {
-        if (tensorRtCacheNoticeShown)
-        {
-            return;
-        }
-
         using JsonDocument document = ParseConfig(configJson);
         string inferenceBackend = GetString(document.RootElement, "backend", "cpu").ToLowerInvariant();
         if (inferenceBackend != "tensorrt")
@@ -432,16 +582,26 @@ public sealed partial class MainForm : Form
             return;
         }
 
-        string cacheDirectory = Path.GetFullPath(Path.Combine(workingDirectory, "engine_cache"));
+        string cacheDirectory = ResolveTensorRtCacheDirectory(workingDirectory, document.RootElement);
+        if (string.IsNullOrWhiteSpace(cacheDirectory))
+        {
+            return;
+        }
+
+        if (tensorRtCacheNoticeShown.Contains(cacheDirectory))
+        {
+            return;
+        }
+
         if (HasTensorRtEngineCache(cacheDirectory))
         {
             return;
         }
 
-        tensorRtCacheNoticeShown = true;
-        PostLog("TensorRT engine cache not found; first initialization may be slow");
+        tensorRtCacheNoticeShown.Add(cacheDirectory);
+        PostLog($"TensorRT engine cache not found for current model: {cacheDirectory}");
         MessageBox.Show(this,
-            "首次使用 TensorRT 时需要生成 engine_cache，初始化速度会比较慢，请耐心等待。\n\n后续启动会复用缓存，速度会明显变快。",
+            "当前模型首次使用 TensorRT，需要先生成专属 engine_cache，初始化速度会比较慢，请耐心等待。\n\n后续再次启动这个模型时会复用对应缓存，速度会明显变快。",
             "首次初始化提醒",
             MessageBoxButtons.OK,
             MessageBoxIcon.Information);
@@ -457,6 +617,57 @@ public sealed partial class MainForm : Form
         {
             return false;
         }
+    }
+
+    private static string ResolveTensorRtCacheDirectory(string workingDirectory, JsonElement config)
+    {
+        string configured = GetString(config, "trtCachePath", string.Empty).Trim();
+        if (!string.IsNullOrWhiteSpace(configured))
+        {
+            return Path.GetFullPath(configured, workingDirectory);
+        }
+
+        string modelId = GetString(config, "modelId", string.Empty).Trim();
+        string modelName = GetString(config, "modelName", string.Empty).Trim();
+        string modelPath = ResolveModelPathForBackend(config);
+        string cacheBase = Path.Combine(workingDirectory, "engine_cache");
+        string namePart = !string.IsNullOrWhiteSpace(modelName)
+            ? SafeFileName(modelName)
+            : SafeFileName(Path.GetFileNameWithoutExtension(modelPath));
+        string suffix = !string.IsNullOrWhiteSpace(modelId)
+            ? SafeFileName(modelId)
+            : SafeFileName(ComputeStableCacheSuffix(modelPath));
+        string folder = string.IsNullOrWhiteSpace(suffix) ? namePart : $"{namePart}_{suffix}";
+        return Path.GetFullPath(Path.Combine(cacheBase, folder));
+    }
+
+    private static string ResolveTensorRtCacheWorkingDirectory(JsonElement config)
+    {
+        string? backendPath = ResolveBackendPath(config);
+        return backendPath is null ? AppContext.BaseDirectory : ResolveRuntimeDirectory(backendPath);
+    }
+
+    private static string ComputeStableCacheSuffix(string modelPath)
+    {
+        if (string.IsNullOrWhiteSpace(modelPath))
+        {
+            return "default";
+        }
+
+        try
+        {
+            if (File.Exists(modelPath))
+            {
+                return ComputeFileSha256(modelPath)[..16];
+            }
+        }
+        catch
+        {
+        }
+
+        using SHA256 sha = SHA256.Create();
+        byte[] bytes = sha.ComputeHash(System.Text.Encoding.UTF8.GetBytes(modelPath));
+        return Convert.ToHexString(bytes).ToLowerInvariant()[..16];
     }
 
     private void StopBackend()
@@ -585,6 +796,7 @@ public sealed partial class MainForm : Form
             : "sendinput";
 
         AppendLine(builder, "model_path", ResolveModelPathForBackend(config));
+        AppendLine(builder, "trt_cache_path", ResolveTensorRtCacheDirectory(ResolveTensorRtCacheWorkingDirectory(config), config));
         AppendLine(builder, "backend", GetString(config, "backend", "cpu"));
         AppendLine(builder, "input_backend", effectiveInputBackend);
         AppendLine(builder, "driver_dll_path", driverDllPath);
@@ -598,7 +810,7 @@ public sealed partial class MainForm : Form
         AppendLine(builder, "aim_mode", GetAimMode(config));
         AppendLine(builder, "aim_gain", GetDouble(config, "aimGain", 0.45));
         AppendLine(builder, "deadzone", GetDouble(config, "deadzone", 1.5));
-        AppendLine(builder, "aim_filter", GetString(config, "aimFilter", "none"));
+        AppendLine(builder, "aim_filter", NormalizeAimFilter(GetString(config, "aimFilter", "none")));
         AppendLine(builder, "pid_kp", GetDouble(config, "pidKp", 1.0));
         AppendLine(builder, "pid_ki", GetDouble(config, "pidKi", 0.0));
         AppendLine(builder, "pid_kd", GetDouble(config, "pidKd", 0.0));
@@ -606,56 +818,41 @@ public sealed partial class MainForm : Form
         AppendLine(builder, "one_euro_min_cutoff", GetDouble(config, "oneEuroMinCutoff", 1.0));
         AppendLine(builder, "one_euro_beta", GetDouble(config, "oneEuroBeta", 0.02));
         AppendLine(builder, "one_euro_d_cutoff", GetDouble(config, "oneEuroDCutoff", 1.0));
-        string predictionMode = GetBool(config, "enablePrediction", false)
-            ? GetString(config, "predictionMode", "linear")
-            : "off";
-        AppendLine(builder, "prediction_mode", predictionMode);
-        AppendLine(builder, "prediction_lead_ms", GetDouble(config, "predictionLeadMs", 20.0));
-        AppendLine(builder, "prediction_smoothing", GetDouble(config, "predictionSmoothing", 0.12));
-        AppendLine(builder, "prediction_acceleration_smoothing", GetDouble(config, "predictionAccelerationSmoothing", 0.18));
-        AppendLine(builder, "prediction_alpha", GetDouble(config, "predictionAlpha", 0.45));
-        AppendLine(builder, "prediction_beta", GetDouble(config, "predictionBeta", 0.06));
-        AppendLine(builder, "prediction_kalman_measurement_noise", GetDouble(config, "predictionKalmanMeasurementNoise", 34.0));
-        AppendLine(builder, "prediction_kalman_process_noise", GetDouble(config, "predictionKalmanProcessNoise", 72.0));
-        AppendLine(builder, "prediction_max_pixels", GetInt(config, "predictionMaxPixels", 18));
-        AppendLine(builder, "prediction_reset_pixels", GetInt(config, "predictionResetPixels", 70));
-        AppendLine(builder, "prediction_noise_pixels", GetDouble(config, "predictionNoisePixels", 1.5));
-        AppendLine(builder, "prediction_output_smoothing", GetDouble(config, "predictionOutputSmoothing", 0.20));
-        AppendLine(builder, "prediction_servo_gain", GetDouble(config, "predictionServoGain", 0.65));
-        AppendLine(builder, "drone_tracking_enabled", GetBool(config, "enableDroneTracking", false));
-        AppendLine(builder, "drone_track_controller", GetString(config, "droneTrackController", "px4"));
-        AppendLine(builder, "drone_track_gain", GetDouble(config, "droneTrackGain", 0.72));
-        AppendLine(builder, "drone_track_velocity_gain", GetDouble(config, "droneTrackVelocityGain", 0.18));
-        AppendLine(builder, "drone_track_damping", GetDouble(config, "droneTrackDamping", 0.10));
-        AppendLine(builder, "drone_track_smoothing", GetDouble(config, "droneTrackSmoothing", 0.60));
-        AppendLine(builder, "drone_track_max_move", GetInt(config, "droneTrackMaxMove", 90));
-        AppendLine(builder, "drone_track_deadzone", GetDouble(config, "droneTrackDeadzone", 0.6));
-        AppendLine(builder, "drone_track_position_gain", GetDouble(config, "droneTrackPositionGain", 0.90));
-        AppendLine(builder, "drone_track_velocity_damping", GetDouble(config, "droneTrackVelocityDamping", 0.28));
-        AppendLine(builder, "drone_track_accel_limit", GetDouble(config, "droneTrackAccelLimit", 2600.0));
-        AppendLine(builder, "drone_track_visp_lambda", GetDouble(config, "droneTrackVispLambda", 0.85));
-        AppendLine(builder, "drone_track_visp_damping", GetDouble(config, "droneTrackVispDamping", 0.22));
+        AppendLine(builder, "crosshair_color_enabled", GetBool(config, "enableCrosshairColor", false));
+        AppendLine(builder, "crosshair_color_r", GetInt(config, "crosshairColorR", 0));
+        AppendLine(builder, "crosshair_color_g", GetInt(config, "crosshairColorG", 255));
+        AppendLine(builder, "crosshair_color_b", GetInt(config, "crosshairColorB", 0));
+        AppendLine(builder, "crosshair_color_tolerance", GetInt(config, "crosshairColorTolerance", 42));
+        AppendLine(builder, "crosshair_min_area", GetInt(config, "crosshairMinArea", 1));
+        AppendLine(builder, "crosshair_max_area", GetInt(config, "crosshairMaxArea", 900));
+        AppendLine(builder, "crosshair_smoothing", GetDouble(config, "crosshairSmoothing", 0.20));
         AppendLine(builder, "target_x", GetDouble(config, "targetX", 0.5));
         AppendLine(builder, "target_y", GetDouble(config, "targetY", 0.3));
         AppendLine(builder, "auto_target_part", GetBool(config, "enableAutoAimPart", true));
+        AppendLine(builder, "target_entity_priority", GetString(config, "targetEntityPriority", "distance"));
         AppendLine(builder, "aim_part_priority", GetString(config, "aimPartPriority", "distance"));
         AppendLine(builder, "enemy_camp", GetString(config, "enemyCamp", "all"));
         AppendLine(builder, "detection_part", GetString(config, "detectionPart", "all"));
+        AppendLine(builder, "target_class_ids", GetTargetClassIds(config));
+        AppendLine(builder, "model_class_names", GetModelClassNames(config));
+        AppendLine(builder, "model_class_roles", GetModelClassRoles(config));
+        AppendLine(builder, "model_class_camps", GetModelClassCamps(config));
         AppendLine(builder, "max_move", GetInt(config, "maxMove", 60));
-        AppendLine(builder, "tracking_boost_enabled", GetBool(config, "enableTrackingBoost", true));
-        AppendLine(builder, "tracking_boost_threshold", GetDouble(config, "trackingBoostThreshold", 4.0));
-        AppendLine(builder, "tracking_boost_gain", GetDouble(config, "trackingBoostGain", 2.0));
-        AppendLine(builder, "tracking_boost_max_move", GetInt(config, "trackingBoostMaxMove", 120));
+        AppendLine(builder, "instant_snap_enabled", GetBool(config, "enableInstantSnap", false));
+        AppendLine(builder, "smooth_slide_max_step", GetInt(config, "smoothSlideMaxStep", 18));
         AppendLine(builder, "human_slide_enabled", GetBool(config, "enableHumanSlide", false));
         AppendLine(builder, "human_slide_max_step", GetDouble(config, "humanSlideMaxStep", 50.0));
         AppendLine(builder, "human_slide_jitter", GetDouble(config, "humanSlideJitter", 0.5));
         AppendLine(builder, "human_slide_delay_min", GetInt(config, "humanSlideDelayMin", 5));
         AppendLine(builder, "human_slide_delay_max", GetInt(config, "humanSlideDelayMax", 20));
         AppendLine(builder, "auto_click_enabled", GetBool(config, "enableAutoClick", false));
-        AppendLine(builder, "auto_click_delay_min", GetInt(config, "autoClickDelayMin", 80));
-        AppendLine(builder, "auto_click_delay_max", GetInt(config, "autoClickDelayMax", 160));
-        AppendLine(builder, "auto_click_interval_min", GetInt(config, "autoClickIntervalMin", 120));
-        AppendLine(builder, "auto_click_interval_max", GetInt(config, "autoClickIntervalMax", 220));
+        AppendLine(builder, "auto_click_hold_mode", GetBool(config, "autoClickHoldMode", false));
+        AppendLine(builder, "auto_click_delay_min", GetInt(config, "autoClickDelayMin", 0));
+        AppendLine(builder, "auto_click_delay_max", GetInt(config, "autoClickDelayMax", 0));
+        AppendLine(builder, "auto_click_hold_delay_min", GetInt(config, "autoClickHoldDelayMin", 0));
+        AppendLine(builder, "auto_click_hold_delay_max", GetInt(config, "autoClickHoldDelayMax", 0));
+        AppendLine(builder, "auto_click_interval_min", GetInt(config, "autoClickIntervalMin", 0));
+        AppendLine(builder, "auto_click_interval_max", GetInt(config, "autoClickIntervalMax", 0));
         AppendLine(builder, "auto_click_tolerance", GetDouble(config, "autoClickTolerance", 3.0));
         AppendLine(builder, "auto_stop_enabled", GetBool(config, "enableAutoStop", false));
         AppendLine(builder, "auto_stop_mode", GetString(config, "autoStopMode", "counter_tap"));
@@ -665,8 +862,14 @@ public sealed partial class MainForm : Form
         AppendLine(builder, "enable_mouse_move", GetBool(config, "enableMouseMove", true));
         AppendLine(builder, "enable_hold_to_aim", GetBool(config, "enableHoldToAim", true));
         AppendLine(builder, "enable_visualization", GetBool(config, "enableVisualization", true));
+        AppendLine(builder, "yolo_fps_limit", GetInt(config, "yoloFpsLimit", 200));
         AppendLine(builder, "console_stats_enabled", GetBool(config, "enableConsoleStats", false));
         AppendLine(builder, "bounded_movement", GetBool(config, "boundedMovement", true));
+        AppendLine(builder, "anti_snap_enabled", GetBool(config, "enableAntiSnap", false));
+        AppendLine(builder, "anti_snap_max_delta", GetInt(config, "antiSnapMaxDelta", 90));
+        AppendLine(builder, "fallen_target_filter_enabled", GetBool(config, "enableFallenTargetFilter", false));
+        AppendLine(builder, "small_lock_only_enabled", GetBool(config, "enableSmallLockOnly", false));
+        AppendLine(builder, "small_lock_radius", GetInt(config, "smallLockRadius", 35));
         return builder.ToString();
     }
 
@@ -730,6 +933,7 @@ public sealed partial class MainForm : Form
         JsonElement config = document.RootElement;
 
         AddArg(startInfo, "model", ResolveModelPathForBackend(config));
+        AddArg(startInfo, "trt-cache-path", ResolveTensorRtCacheDirectory(startInfo.WorkingDirectory, config));
         AddArg(startInfo, "live-config", LiveConfigPath);
         AddArg(startInfo, "backend", GetString(config, "backend", "cpu"));
         string inputBackend = GetString(config, "inputBackend", "sendinput");
@@ -757,7 +961,7 @@ public sealed partial class MainForm : Form
         AddArg(startInfo, "aim-mode", GetAimMode(config));
         AddArg(startInfo, "aim-gain", GetDouble(config, "aimGain", 0.45));
         AddArg(startInfo, "deadzone", GetDouble(config, "deadzone", 1.5));
-        AddArg(startInfo, "aim-filter", GetString(config, "aimFilter", "none"));
+        AddArg(startInfo, "aim-filter", NormalizeAimFilter(GetString(config, "aimFilter", "none")));
         AddArg(startInfo, "pid-kp", GetDouble(config, "pidKp", 1.0));
         AddArg(startInfo, "pid-ki", GetDouble(config, "pidKi", 0.0));
         AddArg(startInfo, "pid-kd", GetDouble(config, "pidKd", 0.0));
@@ -765,61 +969,51 @@ public sealed partial class MainForm : Form
         AddArg(startInfo, "one-euro-min-cutoff", GetDouble(config, "oneEuroMinCutoff", 1.0));
         AddArg(startInfo, "one-euro-beta", GetDouble(config, "oneEuroBeta", 0.02));
         AddArg(startInfo, "one-euro-d-cutoff", GetDouble(config, "oneEuroDCutoff", 1.0));
-        string predictionMode = GetBool(config, "enablePrediction", false)
-            ? GetString(config, "predictionMode", "linear")
-            : "off";
-        AddArg(startInfo, "prediction-mode", predictionMode);
-        AddArg(startInfo, "prediction-lead-ms", GetDouble(config, "predictionLeadMs", 20.0));
-        AddArg(startInfo, "prediction-smoothing", GetDouble(config, "predictionSmoothing", 0.12));
-        AddArg(startInfo, "prediction-acceleration-smoothing", GetDouble(config, "predictionAccelerationSmoothing", 0.18));
-        AddArg(startInfo, "prediction-alpha", GetDouble(config, "predictionAlpha", 0.45));
-        AddArg(startInfo, "prediction-beta", GetDouble(config, "predictionBeta", 0.06));
-        AddArg(startInfo, "prediction-kalman-measurement-noise", GetDouble(config, "predictionKalmanMeasurementNoise", 34.0));
-        AddArg(startInfo, "prediction-kalman-process-noise", GetDouble(config, "predictionKalmanProcessNoise", 72.0));
-        AddArg(startInfo, "prediction-max-pixels", GetInt(config, "predictionMaxPixels", 18));
-        AddArg(startInfo, "prediction-reset-pixels", GetInt(config, "predictionResetPixels", 70));
-        AddArg(startInfo, "prediction-noise-pixels", GetDouble(config, "predictionNoisePixels", 1.5));
-        AddArg(startInfo, "prediction-output-smoothing", GetDouble(config, "predictionOutputSmoothing", 0.20));
-        AddArg(startInfo, "prediction-servo-gain", GetDouble(config, "predictionServoGain", 0.65));
-        AddArg(startInfo, "drone-tracking", GetBool(config, "enableDroneTracking", false) ? "true" : "false");
-        AddArg(startInfo, "drone-track-controller", GetString(config, "droneTrackController", "px4"));
-        AddArg(startInfo, "drone-track-gain", GetDouble(config, "droneTrackGain", 0.72));
-        AddArg(startInfo, "drone-track-velocity-gain", GetDouble(config, "droneTrackVelocityGain", 0.18));
-        AddArg(startInfo, "drone-track-damping", GetDouble(config, "droneTrackDamping", 0.10));
-        AddArg(startInfo, "drone-track-smoothing", GetDouble(config, "droneTrackSmoothing", 0.60));
-        AddArg(startInfo, "drone-track-max-move", GetInt(config, "droneTrackMaxMove", 90));
-        AddArg(startInfo, "drone-track-deadzone", GetDouble(config, "droneTrackDeadzone", 0.6));
-        AddArg(startInfo, "drone-track-position-gain", GetDouble(config, "droneTrackPositionGain", 0.90));
-        AddArg(startInfo, "drone-track-velocity-damping", GetDouble(config, "droneTrackVelocityDamping", 0.28));
-        AddArg(startInfo, "drone-track-accel-limit", GetDouble(config, "droneTrackAccelLimit", 2600.0));
-        AddArg(startInfo, "drone-track-visp-lambda", GetDouble(config, "droneTrackVispLambda", 0.85));
-        AddArg(startInfo, "drone-track-visp-damping", GetDouble(config, "droneTrackVispDamping", 0.22));
+        AddArg(startInfo, "crosshair-color", GetBool(config, "enableCrosshairColor", false) ? "true" : "false");
+        AddArg(startInfo, "crosshair-r", GetInt(config, "crosshairColorR", 0));
+        AddArg(startInfo, "crosshair-g", GetInt(config, "crosshairColorG", 255));
+        AddArg(startInfo, "crosshair-b", GetInt(config, "crosshairColorB", 0));
+        AddArg(startInfo, "crosshair-tolerance", GetInt(config, "crosshairColorTolerance", 42));
+        AddArg(startInfo, "crosshair-min-area", GetInt(config, "crosshairMinArea", 1));
+        AddArg(startInfo, "crosshair-max-area", GetInt(config, "crosshairMaxArea", 900));
+        AddArg(startInfo, "crosshair-smoothing", GetDouble(config, "crosshairSmoothing", 0.20));
         AddArg(startInfo, "target-x", GetDouble(config, "targetX", 0.5));
         AddArg(startInfo, "target-y", GetDouble(config, "targetY", 0.3));
         AddArg(startInfo, "auto-target-part", GetBool(config, "enableAutoAimPart", true) ? "true" : "false");
+        AddArg(startInfo, "target-entity-priority", GetString(config, "targetEntityPriority", "distance"));
         AddArg(startInfo, "aim-part-priority", GetString(config, "aimPartPriority", "distance"));
         AddArg(startInfo, "enemy-camp", GetString(config, "enemyCamp", "all"));
         AddArg(startInfo, "detection-part", GetString(config, "detectionPart", "all"));
+        AddArg(startInfo, "target-class-ids", GetTargetClassIds(config));
+        AddArg(startInfo, "model-class-names", GetModelClassNames(config));
+        AddArg(startInfo, "model-class-roles", GetModelClassRoles(config));
+        AddArg(startInfo, "model-class-camps", GetModelClassCamps(config));
         AddArg(startInfo, "max-move", GetInt(config, "maxMove", 60));
-        AddArg(startInfo, "tracking-boost", GetBool(config, "enableTrackingBoost", true) ? "true" : "false");
-        AddArg(startInfo, "tracking-boost-threshold", GetDouble(config, "trackingBoostThreshold", 4.0));
-        AddArg(startInfo, "tracking-boost-gain", GetDouble(config, "trackingBoostGain", 2.0));
-        AddArg(startInfo, "tracking-boost-max-move", GetInt(config, "trackingBoostMaxMove", 120));
+        AddArg(startInfo, "instant-snap", GetBool(config, "enableInstantSnap", false) ? "true" : "false");
+        AddArg(startInfo, "smooth-slide-max-step", GetInt(config, "smoothSlideMaxStep", 18));
         AddArg(startInfo, "human-slide", GetBool(config, "enableHumanSlide", false) ? "true" : "false");
         AddArg(startInfo, "human-slide-max-step", GetDouble(config, "humanSlideMaxStep", 50.0));
         AddArg(startInfo, "human-slide-jitter", GetDouble(config, "humanSlideJitter", 0.5));
         AddArg(startInfo, "human-slide-delay-min", GetInt(config, "humanSlideDelayMin", 5));
         AddArg(startInfo, "human-slide-delay-max", GetInt(config, "humanSlideDelayMax", 20));
         AddArg(startInfo, "auto-click", GetBool(config, "enableAutoClick", false) ? "true" : "false");
-        AddArg(startInfo, "auto-click-delay-min", GetInt(config, "autoClickDelayMin", 80));
-        AddArg(startInfo, "auto-click-delay-max", GetInt(config, "autoClickDelayMax", 160));
-        AddArg(startInfo, "auto-click-interval-min", GetInt(config, "autoClickIntervalMin", 120));
-        AddArg(startInfo, "auto-click-interval-max", GetInt(config, "autoClickIntervalMax", 220));
+        AddArg(startInfo, "auto-click-hold-mode", GetBool(config, "autoClickHoldMode", false) ? "true" : "false");
+        AddArg(startInfo, "auto-click-delay-min", GetInt(config, "autoClickDelayMin", 0));
+        AddArg(startInfo, "auto-click-delay-max", GetInt(config, "autoClickDelayMax", 0));
+        AddArg(startInfo, "auto-click-hold-delay-min", GetInt(config, "autoClickHoldDelayMin", 0));
+        AddArg(startInfo, "auto-click-hold-delay-max", GetInt(config, "autoClickHoldDelayMax", 0));
+        AddArg(startInfo, "auto-click-interval-min", GetInt(config, "autoClickIntervalMin", 0));
+        AddArg(startInfo, "auto-click-interval-max", GetInt(config, "autoClickIntervalMax", 0));
         AddArg(startInfo, "auto-click-tolerance", GetDouble(config, "autoClickTolerance", 3.0));
         AddArg(startInfo, "auto-stop", GetBool(config, "enableAutoStop", false) ? "true" : "false");
         AddArg(startInfo, "auto-stop-mode", GetString(config, "autoStopMode", "counter_tap"));
         AddArg(startInfo, "auto-stop-hold-ms", GetInt(config, "autoStopHoldMs", 75));
         AddArg(startInfo, "auto-stop-settle-ms", GetInt(config, "autoStopSettleMs", 15));
+        AddArg(startInfo, "anti-snap", GetBool(config, "enableAntiSnap", false) ? "true" : "false");
+        AddArg(startInfo, "anti-snap-max-delta", GetInt(config, "antiSnapMaxDelta", 90));
+        AddArg(startInfo, "fallen-target-filter", GetBool(config, "enableFallenTargetFilter", false) ? "true" : "false");
+        AddArg(startInfo, "small-lock-only", GetBool(config, "enableSmallLockOnly", false) ? "true" : "false");
+        AddArg(startInfo, "small-lock-radius", GetInt(config, "smallLockRadius", 35));
 
         if (!GetBool(config, "enableCapture", true))
         {
@@ -828,6 +1022,7 @@ public sealed partial class MainForm : Form
         if (!GetBool(config, "enableMouseMove", true)) startInfo.ArgumentList.Add("--disable-mouse-move");
         if (!GetBool(config, "enableHoldToAim", true)) startInfo.ArgumentList.Add("--disable-hold-to-aim");
         if (!GetBool(config, "enableVisualization", true)) startInfo.ArgumentList.Add("--disable-visualization");
+        AddArg(startInfo, "yolo-fps-limit", GetInt(config, "yoloFpsLimit", 200));
         AddArg(startInfo, "console-stats", GetBool(config, "enableConsoleStats", false) ? "true" : "false");
         if (!GetBool(config, "boundedMovement", true)) startInfo.ArgumentList.Add("--unbounded-movement");
     }
@@ -958,5 +1153,10 @@ public sealed partial class MainForm : Form
         catch (InvalidOperationException)
         {
         }
+    }
+
+    private static string NormalizeAimFilter(string value)
+    {
+        return value == "pid_oneeuro" ? "pid" : value;
     }
 }

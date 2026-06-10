@@ -1,0 +1,10 @@
+    ID3D11Texture2D* m_pStagingTexture = nullptr;
+    IDXGIFactory1* pFactory = nullptr;
+    IDXGIAdapter1* pAdapter = nullptr;
+    IDXGIOutput* pOutput = nullptr;
+    IDXGIOutput1* pOutput1 = nullptr;
+    ID3D11Device* pDevice = nullptr;
+    ID3D11DeviceContext* pContext = nullptr;
+    IDXGIOutputDuplication* pDuplicator = nullptr;
+    int width = 0;
+    int height = 0;

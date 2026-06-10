@@ -45,26 +45,21 @@
                     <h2>主功能</h2>
                     <small id="configState">SAVED</small>
                 </div>
+                <input id="boundedMovement" type="checkbox" checked hidden>
+                <input id="enableCapture" type="checkbox" checked hidden>
+                <input id="enableHoldToAim" type="checkbox" checked hidden>
 
-                <label class="switch-card">
-                    <input id="enableCapture" type="checkbox" checked>
-                    <span class="switch-ui"></span>
-                    <span class="switch-copy">
-                        <strong>屏幕捕获</strong>
-                        <small>DXGI + YOLO</small>
-                    </span>
-                </label>
-
-                <label class="switch-card">
+                <label class="switch-card" data-help="显示或隐藏 YOLO 可视化窗口，只影响绘制窗口，不影响检测和鼠标移动。">
                     <input id="enableVisualization" type="checkbox" checked>
                     <span class="switch-ui"></span>
                     <span class="switch-copy">
                         <strong>显示 YOLO 窗口</strong>
                         <small>Detection view</small>
                     </span>
+                    <button class="settings-button" type="button" data-open-page="visualization">设置</button>
                 </label>
 
-                <label class="switch-card">
+                <label class="switch-card" data-help="根据模型识别到的头部/身体自动决定瞄准部位；关闭后使用自定义瞄准点。">
                     <input id="enableAutoAimPart" type="checkbox" checked>
                     <span class="switch-ui"></span>
                     <span class="switch-copy">
@@ -74,7 +69,7 @@
                     <button class="settings-button" type="button" data-open-page="target">设置</button>
                 </label>
 
-                <label class="switch-card">
+                <label class="switch-card" data-help="总开关；关闭后不会输出鼠标位移，但屏幕捕获和检测仍可运行。">
                     <input id="enableMouseMove" type="checkbox" checked>
                     <span class="switch-ui"></span>
                     <span class="switch-copy">
@@ -84,37 +79,17 @@
                     <button class="settings-button" type="button" data-open-page="mouse">设置</button>
                 </label>
 
-                <label class="switch-card">
-                    <input id="enableHumanSlide" type="checkbox">
+                <label class="switch-card" data-help="识别准心颜色块中心作为当前准心；识别失败时自动回退到截图中心。">
+                    <input id="enableCrosshairColor" type="checkbox">
                     <span class="switch-ui"></span>
                     <span class="switch-copy">
-                        <strong>仿人类滑动</strong>
-                        <small id="humanSlideSwitchLabel">OFF</small>
+                        <strong>准心图色</strong>
+                        <small id="crosshairColorSwitchLabel">OFF</small>
                     </span>
-                    <button class="settings-button" type="button" data-open-page="humanSlide">设置</button>
+                    <button class="settings-button" type="button" data-open-page="crosshairColor">设置</button>
                 </label>
 
-                <label class="switch-card">
-                    <input id="enablePrediction" type="checkbox">
-                    <span class="switch-ui"></span>
-                    <span class="switch-copy">
-                        <strong>预瞄</strong>
-                        <small id="predictionSwitchLabel">OFF</small>
-                    </span>
-                    <button class="settings-button" type="button" data-open-page="prediction">设置</button>
-                </label>
-
-                <label class="switch-card">
-                    <input id="enableDroneTracking" type="checkbox">
-                    <span class="switch-ui"></span>
-                    <span class="switch-copy">
-                        <strong>仿无人机追踪</strong>
-                        <small id="droneTrackingSwitchLabel">OFF</small>
-                    </span>
-                    <button class="settings-button" type="button" data-open-page="droneTracking">设置</button>
-                </label>
-
-                <label class="switch-card">
+                <label class="switch-card" data-help="当准心到达目标容差范围内自动按左键；可在设置中选择单点或长按。">
                     <input id="enableAutoClick" type="checkbox">
                     <span class="switch-ui"></span>
                     <span class="switch-copy">
@@ -124,27 +99,37 @@
                     <button class="settings-button" type="button" data-open-page="autoClick">设置</button>
                 </label>
 
-                <label class="switch-card">
-                    <input id="enableHoldToAim" type="checkbox" checked>
+                <label class="switch-card" data-help="如果最终单帧鼠标移动超过阈值，本帧会被丢弃，避免突然抽飞。">
+                    <input id="enableAntiSnap" type="checkbox">
                     <span class="switch-ui"></span>
                     <span class="switch-copy">
-                        <strong>按住热键移动</strong>
-                        <small id="aimHotkeySwitchLabel">鼠标左键 / NONE</small>
+                        <strong>防抽</strong>
+                        <small id="antiSnapSwitchLabel">OFF</small>
                     </span>
-                    <button class="settings-button" type="button" data-open-page="mouse">设置</button>
+                    <button class="settings-button" type="button" data-open-page="movementGuard">设置</button>
                 </label>
 
-                <label class="switch-card">
-                    <input id="boundedMovement" type="checkbox" checked>
+                <label class="switch-card" data-help="只允许目标进入小锁半径后才移动；用于近距离微调，避免远距离大幅拉枪。">
+                    <input id="enableSmallLockOnly" type="checkbox">
                     <span class="switch-ui"></span>
                     <span class="switch-copy">
-                        <strong>移动限幅</strong>
-                        <small>Max delta</small>
+                        <strong>仅小锁+压枪</strong>
+                        <small id="smallLockSwitchLabel">OFF</small>
                     </span>
-                    <button class="settings-button" type="button" data-open-page="mouse">设置</button>
+                    <button class="settings-button" type="button" data-open-page="smallLock">设置</button>
                 </label>
 
-                <label class="switch-card">
+                <label class="switch-card" data-help="把一次鼠标移动拆成多段小移动并加入随机扰动；用于降低移动突兀感。">
+                    <input id="enableHumanSlide" type="checkbox">
+                    <span class="switch-ui"></span>
+                    <span class="switch-copy">
+                        <strong>仿人类滑动</strong>
+                        <small id="humanSlideSwitchLabel">OFF</small>
+                    </span>
+                    <button class="settings-button" type="button" data-open-page="humanSlide">设置</button>
+                </label>
+
+                <label class="switch-card" data-help="控制界面下方事件日志显示；关闭后不再刷新前端日志区域。">
                     <input id="enableConsoleStats" type="checkbox">
                     <span class="switch-ui"></span>
                     <span class="switch-copy">
@@ -160,12 +145,32 @@
                 <section class="panel-block" data-page="home">
                     <div class="section-title">
                         <h2>模型</h2>
-                        <small id="backendLabel">TensorRT</small>
+                        <div class="title-actions">
+                            <small id="backendLabel">TensorRT</small>
+                            <button class="icon-button" id="modelHistoryBtn" type="button" aria-label="模型历史">
+                                <svg viewBox="0 0 24 24" aria-hidden="true">
+                                    <path d="M12 7v5l3 2"></path>
+                                    <path d="M4 12a8 8 0 1 0 2.3-5.6"></path>
+                                    <path d="M4 4v4h4"></path>
+                                </svg>
+                            </button>
+                        </div>
                     </div>
-                    <label class="field">
-                        <span>模型路径</span>
-                        <input id="modelPath" type="text" value="" placeholder="自定义 .onnx 路径；留空自动查找" autocomplete="off">
-                    </label>
+                    <input id="modelPath" type="hidden" value="">
+                    <div class="model-import-row">
+                        <button class="command compact" id="importModelBtn" type="button">导入模型</button>
+                        <div class="model-summary">
+                            <strong id="modelNameLabel">未导入模型</strong>
+                            <small id="modelPathLabel">留空时按固定位置自动查找</small>
+                        </div>
+                    </div>
+                    <div class="model-class-panel">
+                        <div class="model-class-header">
+                            <span>类别筛选</span>
+                            <b id="modelClassSummary">ALL</b>
+                        </div>
+                        <div class="model-class-list" id="modelClassList"></div>
+                    </div>
                     <div class="segmented" aria-label="推理后端">
                         <button class="segment active" type="button" data-backend="tensorrt">TensorRT</button>
                         <button class="segment" type="button" data-backend="cuda">CUDA</button>
@@ -194,8 +199,6 @@
                         <span>己方阵营</span>
                         <select id="enemyCamp">
                             <option value="all" selected>ALL（全部）</option>
-                            <option value="ct">CT</option>
-                            <option value="t">T</option>
                         </select>
                     </label>
                     <label class="field">
@@ -206,19 +209,26 @@
                             <option value="body">身体</option>
                         </select>
                     </label>
-                    <div class="team-map">
-                        <span>锁定类别</span>
-                        <b id="enemyCampLabel">ALL</b>
+                </section>
+
+                <section class="panel-block" data-page="visualization">
+                    <div class="section-title">
+                        <h2>显示 YOLO 窗口</h2>
+                        <small>Visualization</small>
                     </div>
+                    <label class="field range-field">
+                        <span>YOLO 帧率限制 <b id="yoloFpsLimitValue">200</b></span>
+                        <input id="yoloFpsLimit" type="range" min="0" max="300" step="5" value="200">
+                    </label>
                     <div class="team-map">
-                        <span>检测部位</span>
-                        <b id="detectionPartLabel">ALL</b>
+                        <span>限制状态</span>
+                        <b id="yoloFpsLimitLabel">200 FPS</b>
                     </div>
                 </section>
 
                 <section class="panel-block" data-page="mouse">
                     <div class="section-title">
-                        <h2>鼠标</h2>
+                        <h2>鼠标移动</h2>
                         <small>SendInput</small>
                     </div>
                     <div class="hotkey-grid">
@@ -254,28 +264,48 @@
                         <span>单帧限幅 <b id="maxMoveValue">60</b></span>
                         <input id="maxMove" type="range" min="10" max="160" step="5" value="60">
                     </label>
-                    <label class="field inline-switch">
-                        <span>
-                            高速追踪
-                            <small>跑跳目标时直接追赶最新偏移</small>
-                        </span>
-                        <input id="enableTrackingBoost" type="checkbox" checked>
+                    <label class="switch-card inline-switch-card" data-help="开启后恢复旧逻辑：本帧算出多少就尽量一次输出多少。关闭时默认按平滑步长逐帧滑向目标，减少游戏视角突然一拉的感觉。">
+                        <input id="enableInstantSnap" type="checkbox">
                         <span class="switch-ui"></span>
+                        <span class="switch-copy">
+                            <strong>一帧秒拉 <em class="risk-tag">高风险</em></strong>
+                            <small>旧版直拉</small>
+                        </span>
                     </label>
-                    <div class="hotkey-grid" id="trackingBoostFields">
-                        <label class="field range-field">
-                            <span>触发阈值 <b id="trackingBoostThresholdValue">4</b> px</span>
-                            <input id="trackingBoostThreshold" type="range" min="1" max="80" step="1" value="4">
-                        </label>
-                        <label class="field range-field">
-                            <span>追赶倍率 <b id="trackingBoostGainValue">2.00</b></span>
-                            <input id="trackingBoostGain" type="range" min="1.00" max="3.00" step="0.05" value="2.00">
-                        </label>
-                        <label class="field range-field">
-                            <span>追赶限幅 <b id="trackingBoostMaxMoveValue">120</b></span>
-                            <input id="trackingBoostMaxMove" type="range" min="20" max="300" step="5" value="120">
-                        </label>
+                    <label class="field range-field">
+                        <span>平滑步长 <b id="smoothSlideMaxStepValue">18</b></span>
+                        <input id="smoothSlideMaxStep" type="range" min="1" max="120" step="1" value="18">
+                    </label>
+                    <label class="switch-card inline-switch-card" data-help="过滤已锁定目标死亡倒地后的短暂残留框。判断依据不是单纯位置变低，而是结合目标整体下坠、头部消失或明显下掉、框体变扁或缩小等变化，尽量避免把正常蹲下误判进去。">
+                        <input id="enableFallenTargetFilter" type="checkbox">
+                        <span class="switch-ui"></span>
+                        <span class="switch-copy">
+                            <strong>倒地残留过滤</strong>
+                            <small id="fallenTargetFilterSwitchLabel">OFF</small>
+                        </span>
+                    </label>
+                </section>
+
+                <section class="panel-block movement-guard-slot" id="movementGuardSlot" data-page="movementGuard">
+                    <div class="section-title">
+                        <h2>防抽</h2>
+                        <small>Guard</small>
                     </div>
+                    <label class="field range-field">
+                        <span>防抽阈值 <b id="antiSnapMaxDeltaValue">90</b></span>
+                        <input id="antiSnapMaxDelta" type="range" min="10" max="300" step="5" value="90">
+                    </label>
+                </section>
+
+                <section class="panel-block small-lock-slot" id="smallLockSlot" data-page="smallLock">
+                    <div class="section-title">
+                        <h2>仅小锁+压枪</h2>
+                        <small>Small lock</small>
+                    </div>
+                    <label class="field range-field">
+                        <span>小锁半径 <b id="smallLockRadiusValue">35</b></span>
+                        <input id="smallLockRadius" type="range" min="5" max="120" step="5" value="35">
+                    </label>
                 </section>
 
                 <section class="panel-block auto-click-slot" id="autoClickSlot" data-page="autoClick">
@@ -283,39 +313,61 @@
                         <h2>自动扳机</h2>
                         <small id="autoClickLabel">OFF</small>
                     </div>
-                    <label class="field range-field dual-range-field">
+                    <label class="field">
+                        <span>扳机模式</span>
+                        <select id="autoClickMode">
+                            <option value="single" selected>单点</option>
+                            <option value="hold">长按</option>
+                        </select>
+                    </label>
+                    <label class="field range-field dual-range-field trigger-single-field">
                         <span>
-                            按下延迟
+                            单点按下延迟
                             <span class="range-value-pair">
-                                <button class="range-value-button" id="autoClickDelayMinValue" type="button">80</button>
+                                <button class="range-value-button" id="autoClickDelayMinValue" type="button">0</button>
                                 <em>-</em>
-                                <button class="range-value-button" id="autoClickDelayMaxValue" type="button">160</button>
+                                <button class="range-value-button" id="autoClickDelayMaxValue" type="button">0</button>
                             </span>
                             ms
                         </span>
                         <div class="dual-range" id="autoClickDelayRange">
-                            <input id="autoClickDelayMin" type="range" min="0" max="1000" step="5" value="80" aria-label="自动扳机最小按下延迟">
-                            <input id="autoClickDelayMax" type="range" min="0" max="1000" step="5" value="160" aria-label="自动扳机最大按下延迟">
+                            <input id="autoClickDelayMin" type="range" min="0" max="1000" step="5" value="0" aria-label="自动扳机单点最小按下延迟">
+                            <input id="autoClickDelayMax" type="range" min="0" max="1000" step="5" value="0" aria-label="自动扳机单点最大按下延迟">
                         </div>
                     </label>
-                    <label class="field range-field dual-range-field">
+                    <label class="field range-field dual-range-field trigger-single-field">
                         <span>
-                            点击间隔
+                            单点点击间隔
                             <span class="range-value-pair">
-                                <button class="range-value-button" id="autoClickIntervalMinValue" type="button">120</button>
+                                <button class="range-value-button" id="autoClickIntervalMinValue" type="button">0</button>
                                 <em>-</em>
-                                <button class="range-value-button" id="autoClickIntervalMaxValue" type="button">220</button>
+                                <button class="range-value-button" id="autoClickIntervalMaxValue" type="button">0</button>
                             </span>
                             ms
                         </span>
                         <div class="dual-range" id="autoClickIntervalRange">
-                            <input id="autoClickIntervalMin" type="range" min="0" max="1500" step="5" value="120" aria-label="自动扳机最小点击间隔">
-                            <input id="autoClickIntervalMax" type="range" min="0" max="1500" step="5" value="220" aria-label="自动扳机最大点击间隔">
+                            <input id="autoClickIntervalMin" type="range" min="0" max="1500" step="5" value="0" aria-label="自动扳机最小点击间隔">
+                            <input id="autoClickIntervalMax" type="range" min="0" max="1500" step="5" value="0" aria-label="自动扳机最大点击间隔">
                         </div>
                     </label>
                     <label class="field range-field">
                         <span>到位容差 <b class="editable-value" id="autoClickToleranceValue" tabindex="0" role="button">3.0</b> px</span>
                         <input id="autoClickTolerance" type="range" min="0.0" max="20.0" step="0.5" value="3.0">
+                    </label>
+                    <label class="field range-field dual-range-field trigger-hold-field">
+                        <span>
+                            长按延迟
+                            <span class="range-value-pair">
+                                <button class="range-value-button" id="autoClickHoldDelayMinValue" type="button">0</button>
+                                <em>-</em>
+                                <button class="range-value-button" id="autoClickHoldDelayMaxValue" type="button">0</button>
+                            </span>
+                            ms
+                        </span>
+                        <div class="dual-range" id="autoClickHoldDelayRange">
+                            <input id="autoClickHoldDelayMin" type="range" min="0" max="1000" step="5" value="0" aria-label="自动扳机长按最小延迟">
+                            <input id="autoClickHoldDelayMax" type="range" min="0" max="1000" step="5" value="0" aria-label="自动扳机长按最大延迟">
+                        </div>
                     </label>
                     <label class="field inline-switch">
                         <span>
@@ -343,156 +395,50 @@
                     </label>
                 </section>
 
-                <section class="panel-block prediction-slot" id="predictionSlot" data-page="prediction">
+                <section class="panel-block crosshair-color-slot" id="crosshairColorSlot" data-page="crosshairColor">
                     <div class="section-title">
-                        <h2>预瞄</h2>
-                        <small id="predictionLabel">OFF</small>
+                        <h2>准心图色</h2>
+                        <small id="crosshairColorLabel">OFF</small>
                     </div>
-                    <label class="field">
-                        <span>算法</span>
-                        <select id="predictionMode">
-                            <option value="linear" selected>线性速度</option>
-                            <option value="arc">弧线预判</option>
-                            <option value="hybrid">综合预判</option>
-                            <option value="adaptive">实时坐标推理</option>
-                            <option value="servo">闭环追踪</option>
-                            <option value="alphabeta">Alpha-Beta</option>
-                            <option value="kalman">卡尔曼滤波</option>
-                        </select>
-                    </label>
-                    <div class="hotkey-grid">
-                        <label class="field range-field">
-                            <span>提前量 <b id="predictionLeadMsValue">20</b> ms</span>
-                            <input id="predictionLeadMs" type="range" min="0" max="120" step="1" value="20">
-                        </label>
-                        <label class="field range-field">
-                            <span>最大预瞄 <b id="predictionMaxPixelsValue">60</b> px</span>
-                            <input id="predictionMaxPixels" type="range" min="0" max="120" step="1" value="60">
-                        </label>
+                    <div class="team-map">
+                        <span>当前颜色</span>
+                        <b class="color-swatch" id="crosshairColorSwatch"></b>
+                    </div>
+                    <div class="driver-actions">
+                        <button class="command compact" id="pickCrosshairColorBtn" type="button">一键取色</button>
                     </div>
                     <div class="hotkey-grid">
                         <label class="field range-field">
-                            <span>目标噪声 <b id="predictionNoisePixelsValue">1.5</b> px</span>
-                            <input id="predictionNoisePixels" type="range" min="0.0" max="8.0" step="0.1" value="1.5">
+                            <span>R <b id="crosshairColorRValue">0</b></span>
+                            <input id="crosshairColorR" type="range" min="0" max="255" step="1" value="0">
                         </label>
                         <label class="field range-field">
-                            <span>预瞄响应 <b id="predictionOutputSmoothingValue">0.20</b></span>
-                            <input id="predictionOutputSmoothing" type="range" min="0.02" max="1.00" step="0.01" value="0.20">
-                        </label>
-                    </div>
-                    <div class="filter-fields" id="predictionLinearFields">
-                        <label class="field range-field">
-                            <span>速度响应 <b id="predictionSmoothingValue">0.12</b></span>
-                            <input id="predictionSmoothing" type="range" min="0.00" max="1.00" step="0.01" value="0.12">
-                        </label>
-                    </div>
-                    <div class="filter-fields" id="predictionServoFields">
-                        <label class="field range-field">
-                            <span>伺服强度 <b id="predictionServoGainValue">0.65</b></span>
-                            <input id="predictionServoGain" type="range" min="0.00" max="2.00" step="0.01" value="0.65">
-                        </label>
-                    </div>
-                    <div class="filter-fields" id="predictionArcFields">
-                        <label class="field range-field">
-                            <span>弧线响应 <b id="predictionAccelerationSmoothingValue">0.18</b></span>
-                            <input id="predictionAccelerationSmoothing" type="range" min="0.00" max="1.00" step="0.01" value="0.18">
-                        </label>
-                    </div>
-                    <div class="filter-fields" id="predictionAlphaBetaFields">
-                        <label class="field range-field">
-                            <span>Alpha <b id="predictionAlphaValue">0.45</b></span>
-                            <input id="predictionAlpha" type="range" min="0.00" max="1.00" step="0.01" value="0.45">
+                            <span>G <b id="crosshairColorGValue">255</b></span>
+                            <input id="crosshairColorG" type="range" min="0" max="255" step="1" value="255">
                         </label>
                         <label class="field range-field">
-                            <span>Beta <b id="predictionBetaValue">0.06</b></span>
-                            <input id="predictionBeta" type="range" min="0.00" max="1.00" step="0.01" value="0.06">
-                        </label>
-                    </div>
-                    <div class="filter-fields" id="predictionKalmanFields">
-                        <label class="field range-field">
-                            <span>测量噪声 R <b id="predictionKalmanMeasurementNoiseValue">34</b></span>
-                            <input id="predictionKalmanMeasurementNoise" type="range" min="0.1" max="200.0" step="0.1" value="34.0">
-                        </label>
-                        <label class="field range-field">
-                            <span>过程噪声 Q <b id="predictionKalmanProcessNoiseValue">72</b></span>
-                            <input id="predictionKalmanProcessNoise" type="range" min="0.1" max="1000.0" step="0.1" value="72.0">
+                            <span>B <b id="crosshairColorBValue">0</b></span>
+                            <input id="crosshairColorB" type="range" min="0" max="255" step="1" value="0">
                         </label>
                     </div>
                     <label class="field range-field">
-                        <span>跳变重置 <b id="predictionResetPixelsValue">70</b> px</span>
-                        <input id="predictionResetPixels" type="range" min="20" max="240" step="5" value="70">
-                    </label>
-                </section>
-
-                <section class="panel-block drone-tracking-slot" id="droneTrackingSlot" data-page="droneTracking">
-                    <div class="section-title">
-                        <h2>仿无人机追踪</h2>
-                        <small id="droneTrackingLabel">OFF</small>
-                    </div>
-                    <label class="field">
-                        <span>控制器</span>
-                        <select id="droneTrackController">
-                            <option value="px4" selected>PX4 级联控制</option>
-                            <option value="visp">ViSP 视觉伺服参考</option>
-                            <option value="classic">经典速度前馈</option>
-                        </select>
+                        <span>颜色容差 <b id="crosshairColorToleranceValue">42</b></span>
+                        <input id="crosshairColorTolerance" type="range" min="0" max="120" step="1" value="42">
                     </label>
                     <div class="hotkey-grid">
                         <label class="field range-field">
-                            <span>主增益 <b id="droneTrackGainValue">0.72</b></span>
-                            <input id="droneTrackGain" type="range" min="0.10" max="4.00" step="0.01" value="0.72">
+                            <span>最小面积 <b id="crosshairMinAreaValue">1</b></span>
+                            <input id="crosshairMinArea" type="range" min="1" max="500" step="1" value="1">
                         </label>
                         <label class="field range-field">
-                            <span>速度前馈 <b id="droneTrackVelocityGainValue">0.18</b></span>
-                            <input id="droneTrackVelocityGain" type="range" min="0.00" max="3.00" step="0.01" value="0.18">
+                            <span>最大面积 <b id="crosshairMaxAreaValue">900</b></span>
+                            <input id="crosshairMaxArea" type="range" min="1" max="5000" step="10" value="900">
                         </label>
                     </div>
-                    <div class="hotkey-grid">
-                        <label class="field range-field">
-                            <span>误差阻尼 <b id="droneTrackDampingValue">0.10</b></span>
-                            <input id="droneTrackDamping" type="range" min="0.00" max="2.00" step="0.01" value="0.10">
-                        </label>
-                        <label class="field range-field">
-                            <span>响应平滑 <b id="droneTrackSmoothingValue">0.60</b></span>
-                            <input id="droneTrackSmoothing" type="range" min="0.02" max="1.00" step="0.01" value="0.60">
-                        </label>
-                    </div>
-                    <div class="hotkey-grid">
-                        <label class="field range-field">
-                            <span>单帧限幅 <b id="droneTrackMaxMoveValue">90</b> px</span>
-                            <input id="droneTrackMaxMove" type="range" min="10" max="500" step="1" value="90">
-                        </label>
-                        <label class="field range-field">
-                            <span>追踪死区 <b id="droneTrackDeadzoneValue">0.6</b> px</span>
-                            <input id="droneTrackDeadzone" type="range" min="0.0" max="10.0" step="0.1" value="0.6">
-                        </label>
-                    </div>
-                    <div class="hotkey-grid">
-                        <label class="field range-field">
-                            <span>PX4位置增益 <b id="droneTrackPositionGainValue">0.90</b></span>
-                            <input id="droneTrackPositionGain" type="range" min="0.00" max="3.00" step="0.01" value="0.90">
-                        </label>
-                        <label class="field range-field">
-                            <span>PX4速度阻尼 <b id="droneTrackVelocityDampingValue">0.28</b></span>
-                            <input id="droneTrackVelocityDamping" type="range" min="0.00" max="3.00" step="0.01" value="0.28">
-                        </label>
-                    </div>
-                    <div class="hotkey-grid">
-                        <label class="field range-field">
-                            <span>PX4加速度限制 <b id="droneTrackAccelLimitValue">2600</b></span>
-                            <input id="droneTrackAccelLimit" type="range" min="100" max="12000" step="50" value="2600">
-                        </label>
-                        <label class="field range-field">
-                            <span>ViSP Lambda <b id="droneTrackVispLambdaValue">0.85</b></span>
-                            <input id="droneTrackVispLambda" type="range" min="0.05" max="3.00" step="0.01" value="0.85">
-                        </label>
-                    </div>
-                    <div class="hotkey-grid">
-                        <label class="field range-field">
-                            <span>ViSP阻尼 <b id="droneTrackVispDampingValue">0.22</b></span>
-                            <input id="droneTrackVispDamping" type="range" min="0.00" max="3.00" step="0.01" value="0.22">
-                        </label>
-                    </div>
+                    <label class="field range-field">
+                        <span>准心平滑 <b id="crosshairSmoothingValue">0.20</b></span>
+                        <input id="crosshairSmoothing" type="range" min="0.00" max="0.90" step="0.01" value="0.20">
+                    </label>
                 </section>
 
                 <section class="panel-block human-slide-slot" id="humanSlideSlot" data-page="humanSlide">
@@ -533,7 +479,6 @@
                             <option value="none" selected>关闭</option>
                             <option value="pid">PID</option>
                             <option value="oneeuro">1 Euro</option>
-                            <option value="pid_oneeuro">PID + 1 Euro</option>
                         </select>
                     </label>
                     <div class="filter-actions">
@@ -573,7 +518,7 @@
                     </div>
                 </section>
 
-                <section class="panel-block driver-slot" data-page="home mouse">
+                <section class="panel-block driver-slot" data-page="home">
                     <div class="section-title">
                         <h2>输入后端</h2>
                         <small id="inputBackendLabel">SendInput</small>
@@ -587,8 +532,13 @@
                         </select>
                     </label>
                     <label class="field" id="driverDllField">
-                        <span>驱动 DLL 路径</span>
-                        <input id="driverDllPath" type="text" value="" placeholder="可留空自动识别 drivers\dd60300.dll" autocomplete="off">
+                        <span>驱动 DLL</span>
+                        <input id="driverDllPath" type="hidden" value="">
+                        <div class="driver-file-row">
+                            <button class="command compact" id="chooseDriverDllBtn" type="button">选择文件</button>
+                            <button class="command compact" id="driverHistoryBtn" type="button">历史</button>
+                            <small class="path-summary" id="driverDllPathLabel">留空时自动识别 drivers 目录</small>
+                        </div>
                     </label>
                     <label class="field" id="driverTypeField">
                         <span>驱动类型</span>
@@ -623,7 +573,7 @@
                             <dt>DD 驱动 DLL</dt>
                             <dd><code>drivers\dd60300.dll</code> 或 <code>backend\dd60300.dll</code></dd>
                             <dt>普通驱动 DLL</dt>
-                            <dd><code>drivers\DriverBridge.dll</code>、<code>driver_bridge.dll</code>、<code>driver.dll</code>、<code>mouse_driver.dll</code>、<code>logi_driver.dll</code></dd>
+                            <dd><code>drivers\logi_driver_direct.dll</code>、<code>DriverBridge.dll</code>、<code>driver_bridge.dll</code>、<code>driver.dll</code>、<code>mouse_driver.dll</code>、<code>logi_driver.dll</code>、<code>g.dll</code>、<code>razer.dll</code>、<code>lgmouse.dll</code>。DLL 必须和后端同架构，当前发布版通常需要 x64。</dd>
                             <dt>后端运行 DLL</dt>
                             <dd><code>backend\</code>、<code>runtime\</code>、<code>deps\onnxruntime\</code>、<code>deps\opencv\</code>、<code>deps\cuda\bin\</code>、<code>deps\tensorrt\bin\</code></dd>
                         </dl>
@@ -695,8 +645,15 @@
                         <h2>自动选择部位</h2>
                         <small>LOCK PART</small>
                     </div>
+                    <label class="field" id="targetEntityPriorityField">
+                        <span>自动选择目标</span>
+                        <select id="targetEntityPriority">
+                            <option value="distance" selected>距离优先</option>
+                            <option value="head">头部优先</option>
+                        </select>
+                    </label>
                     <label class="field" id="aimPartPriorityField">
-                        <span>锁定部位</span>
+                        <span>部位选择</span>
                         <select id="aimPartPriority">
                             <option value="distance" selected>距离优先</option>
                             <option value="head">头部优先</option>
@@ -714,6 +671,22 @@
             </div>
             <ol id="eventLog"></ol>
         </section>
+        <div class="help-tooltip" id="helpTooltip" role="tooltip" hidden></div>
+        <div class="modal-layer" id="modalLayer" hidden>
+            <section class="modal-card" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+                <div class="modal-header">
+                    <h2 id="modalTitle">设置</h2>
+                    <button class="icon-button" id="modalCloseBtn" type="button" aria-label="关闭">
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M6 6l12 12"></path>
+                            <path d="M18 6L6 18"></path>
+                        </svg>
+                    </button>
+                </div>
+                <div class="modal-body" id="modalBody"></div>
+                <div class="modal-actions" id="modalActions"></div>
+            </section>
+        </div>
     </main>
 
     <script src="app.js"></script>

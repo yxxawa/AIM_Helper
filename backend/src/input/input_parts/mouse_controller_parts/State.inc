@@ -1,0 +1,12 @@
+    std::unique_ptr<InputBackend> backend;
+    std::mt19937 rng{ std::random_device{}() };
+    std::mutex backend_mutex;
+    std::mutex movement_mutex;
+    std::condition_variable movement_cv;
+    std::thread movement_worker;
+    std::atomic_bool movement_worker_stop{ false };
+    std::atomic<uint64_t> movement_generation{ 0 };
+    Config pending_movement_cfg;
+    uint64_t pending_movement_generation = 0;
+    int pending_move_x = 0;
+    int pending_move_y = 0;

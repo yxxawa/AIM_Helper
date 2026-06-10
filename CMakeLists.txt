@@ -8,7 +8,27 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 add_executable(AIM_Helper_Backend main.cpp)
 
-find_package(OpenCV REQUIRED)
+find_package(OpenCV QUIET)
+if(NOT OpenCV_FOUND)
+    set(OPENCV_LOCAL_ROOT
+        ""
+        CACHE PATH "Local OpenCV fallback root")
+    find_path(OPENCV_LOCAL_INCLUDE_DIR
+        NAMES opencv2/opencv.hpp
+        PATHS "${OPENCV_LOCAL_ROOT}/include"
+        NO_DEFAULT_PATH
+    )
+    find_library(OPENCV_LOCAL_WORLD_LIBRARY
+        NAMES opencv_world4120
+        PATHS "${OPENCV_LOCAL_ROOT}/lib"
+        NO_DEFAULT_PATH
+    )
+    if(NOT OPENCV_LOCAL_INCLUDE_DIR OR NOT OPENCV_LOCAL_WORLD_LIBRARY)
+        message(FATAL_ERROR "OpenCV not found. Set OpenCV_DIR or OPENCV_LOCAL_ROOT.")
+    endif()
+    set(OpenCV_INCLUDE_DIRS "${OPENCV_LOCAL_INCLUDE_DIR}")
+    set(OpenCV_LIBS "${OPENCV_LOCAL_WORLD_LIBRARY}")
+endif()
 
 target_include_directories(AIM_Helper_Backend PRIVATE
     ${OpenCV_INCLUDE_DIRS}

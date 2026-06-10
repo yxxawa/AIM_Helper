@@ -1,4 +1,4 @@
-# 构建输出
+# Build outputs
 build/
 build*/
 out/
@@ -7,7 +7,7 @@ x86/
 Debug/
 Release/
 
-# .NET / WinForms 宿主输出
+# .NET / WinForms host outputs
 host/bin/
 host/obj/
 *.user
@@ -27,38 +27,52 @@ compile_commands.json
 *.vcxproj.filters
 *.vcxproj.user
 
-# 运行状态
+# Runtime state
 runtime-config.json
 runtime-config.live
 downloads/
 engine_cache/
+aim_samples/
+aim_learning_weights.json
 *.log
 *.tmp
 *.part
+*.jsonl
 
-# WebView2 用户数据
+# WebView2 user data
 *.WebView2/
-OfflineYoloConsole.Host.exe.WebView2/
+AIM_Helper.Host.exe.WebView2/
 
-# 模型和外部依赖
+# Models and external dependencies
 models/
-backend/
 deps/
 runtime/
 drivers/
 *.onnx
 *.engine
 *.plan
-*.dll
-*.lib
-*.exe
-*.pdb
 
-# 忽略二进制库，但保留源码头文件
+# Binary artifacts and SDK libraries
+*.dll
+*.exe
+*.lib
+*.pdb
+*.ilk
+*.obj
+*.pch
+*.idb
+*.ipdb
+*.iobj
+
+# Keep driver ABI source headers
 !driver/*.h
 !driver/*.hpp
 
-# 系统和编辑器临时文件
+# Local backup folders
+_codex_backups/
+backup*/
+
+# System and editor files
 Thumbs.db
 Desktop.ini
 .idea/

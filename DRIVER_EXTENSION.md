@@ -32,7 +32,7 @@ extern "C" {
 
 `DriverBackend` 还尝试兼容两类历史 DLL ABI。
 
-### `logi_driver.dll` / `g.dll` 风格
+### `logi_driver_direct.dll` / `logi_driver.dll` / `g.dll` 风格
 
 ```cpp
 int __stdcall device_open();
@@ -43,6 +43,9 @@ int __stdcall mouse_up(int button);
 ```
 
 该 ABI 没有滚轮导出函数，因此 `Scroll(delta)` 会被忽略并记录警告。
+
+当前程序优先自动查找 `drivers\logi_driver_direct.dll`。这个 DLL 使用同一套历史 ABI，
+所以后端鼠标移动仍然只调用 `moveR(x, y)`，鼠标按下/释放仍然调用 `mouse_down/button` 与 `mouse_up/button`。
 
 ### `lgmouse.dll` 风格
 
@@ -101,7 +104,7 @@ public:
 WebView 宿主会把类似下面的参数传给 C++ 后端：
 
 ```powershell
-AIM_Helper_Backend.exe --input-backend=driver --driver-dll="D:\path\to\YourDriverBridge.dll"
+AIM_Helper_Backend.exe --input-backend=driver --driver-dll="<你的驱动桥接DLL路径>\YourDriverBridge.dll"
 ```
 
 手动指定 `SendInput`：

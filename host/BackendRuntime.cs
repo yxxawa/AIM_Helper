@@ -115,16 +115,29 @@ public sealed partial class MainForm
 
     private static string ResolveModelPathForBackend(JsonElement config)
     {
-        string configuredModel = GetDependencyPath(config, "modelFile");
-        if (!string.IsNullOrWhiteSpace(configuredModel) && File.Exists(configuredModel))
-        {
-            return configuredModel;
-        }
-
         string modelPath = GetString(config, "modelPath", string.Empty).Trim();
         if (!string.IsNullOrWhiteSpace(modelPath) && Path.IsPathRooted(modelPath))
         {
             return modelPath;
+        }
+
+        string modelId = GetString(config, "modelId", string.Empty).Trim();
+        if (!string.IsNullOrWhiteSpace(modelId))
+        {
+            ModelHistoryEntry? historyEntry = LoadModelHistory()
+                .FirstOrDefault(item => string.Equals(item.id, modelId, StringComparison.OrdinalIgnoreCase) &&
+                                        !string.IsNullOrWhiteSpace(item.localPath) &&
+                                        File.Exists(item.localPath));
+            if (historyEntry is not null)
+            {
+                return historyEntry.localPath;
+            }
+        }
+
+        string configuredModel = GetDependencyPath(config, "modelFile");
+        if (!string.IsNullOrWhiteSpace(configuredModel) && File.Exists(configuredModel))
+        {
+            return configuredModel;
         }
 
         string backendDirectory = Path.GetDirectoryName(ResolveBackendPath(config) ?? string.Empty) ?? string.Empty;
@@ -159,13 +172,15 @@ public sealed partial class MainForm
         }
 
         string? configuredMatch = ResolveConfiguredFilePath(configuredPath, BuildDriverDllSearchDirectories(config));
-        if (configuredMatch is not null)
+        if (!string.IsNullOrWhiteSpace(configuredPath))
         {
-            return configuredMatch;
+            return configuredMatch is not null && IsDriverDllCompatibleWithBackend(configuredMatch, config)
+                ? configuredMatch
+                : string.Empty;
         }
 
         string[] dllNames = inputBackend == "dd" ? DdDriverDllNames : GenericDriverDllNames;
-        return FindFirstExistingFile(BuildDriverDllSearchDirectories(config), dllNames) ?? string.Empty;
+        return FindFirstCompatibleDriverDll(BuildDriverDllSearchDirectories(config), dllNames, config) ?? string.Empty;
     }
 
     private static IEnumerable<string> BuildDriverDllSearchDirectories(JsonElement config)
@@ -218,6 +233,64 @@ public sealed partial class MainForm
         }
 
         return null;
+    }
+
+    private static string? FindFirstCompatibleDriverDll(IEnumerable<string> directories, IEnumerable<string> fileNames, JsonElement config)
+    {
+        foreach (string directory in directories)
+        {
+            foreach (string fileName in fileNames)
+            {
+                string candidate = Path.Combine(directory, fileName);
+                if (File.Exists(candidate) && IsDriverDllCompatibleWithBackend(candidate, config))
+                {
+                    return candidate;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private static bool IsDriverDllCompatibleWithBackend(string dllPath, JsonElement config)
+    {
+        ushort? dllMachine = ReadPeMachine(dllPath);
+        string? backendPath = ResolveBackendPath(config);
+        ushort? backendMachine = string.IsNullOrWhiteSpace(backendPath) ? null : ReadPeMachine(backendPath);
+        if (dllMachine is null || backendMachine is null)
+        {
+            return true;
+        }
+        return dllMachine.Value == backendMachine.Value;
+    }
+
+    private static ushort? ReadPeMachine(string path)
+    {
+        try
+        {
+            using FileStream stream = File.OpenRead(path);
+            using BinaryReader reader = new(stream);
+            if (stream.Length < 0x40 || reader.ReadUInt16() != 0x5A4D)
+            {
+                return null;
+            }
+            stream.Position = 0x3C;
+            int peOffset = reader.ReadInt32();
+            if (peOffset <= 0 || peOffset + 6 > stream.Length)
+            {
+                return null;
+            }
+            stream.Position = peOffset;
+            if (reader.ReadUInt32() != 0x00004550)
+            {
+                return null;
+            }
+            return reader.ReadUInt16();
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private static IEnumerable<string> ExistingDistinctDirectories(IEnumerable<string> directories)
@@ -289,6 +362,6 @@ public sealed partial class MainForm
     {
         return inputBackend == "dd"
             ? @"drivers\dd60300.dll 或 backend\dd60300.dll"
-            : @"drivers\DriverBridge.dll / driver_bridge.dll / driver.dll / mouse_driver.dll / logi_driver.dll";
+            : @"drivers\logi_driver_direct.dll / DriverBridge.dll / driver_bridge.dll / driver.dll / mouse_driver.dll / logi_driver.dll / g.dll / razer.dll / lgmouse.dll（必须与后端同架构，当前发布版通常为 x64）";
     }
 }
